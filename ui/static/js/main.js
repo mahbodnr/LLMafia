@@ -12,7 +12,6 @@ let gameState = {
     players: [],
     messages: [],
     events: [],
-    autoPlay: false,
     currentSpeaker: null,
     waitingForContinue: false
 };
@@ -23,8 +22,6 @@ const gameRoundElement = document.getElementById('game-round');
 const gameTimeElement = document.getElementById('game-time');
 const startGameButton = document.getElementById('start-game');
 const nextPhaseButton = document.getElementById('next-phase');
-const autoPlayButton = document.getElementById('auto-play');
-const pauseGameButton = document.getElementById('pause-game');
 const resetGameButton = document.getElementById('reset-game');
 const playersContainer = document.getElementById('players-container');
 const chatMessages = document.getElementById('chat-messages');
@@ -150,8 +147,6 @@ function initializeSocket() {
 function setupEventListeners() {
     startGameButton.addEventListener('click', startGame);
     nextPhaseButton.addEventListener('click', nextPhase);
-    autoPlayButton.addEventListener('click', toggleAutoPlay);
-    pauseGameButton.addEventListener('click', pauseGame);
     resetGameButton.addEventListener('click', resetGame);
     downloadTranscriptButton.addEventListener('click', downloadTranscript);
     newGameButton.addEventListener('click', () => {
@@ -211,7 +206,6 @@ function startGame() {
     // Update UI
     startGameButton.disabled = true;
     nextPhaseButton.disabled = false;
-    autoPlayButton.disabled = false;
     resetGameButton.disabled = false;
     
     // Disable settings
@@ -232,35 +226,6 @@ function nextPhase() {
     socket.emit('next_phase');
 }
 
-// Toggle auto play mode
-function toggleAutoPlay() {
-    gameState.autoPlay = !gameState.autoPlay;
-    
-    if (gameState.autoPlay) {
-        autoPlayButton.textContent = 'Stop Auto Play';
-        autoPlayButton.classList.replace('btn-success', 'btn-danger');
-        nextPhaseButton.disabled = true;
-        pauseGameButton.disabled = false;
-        
-        // Start auto play
-        socket.emit('auto_play', true);
-    } else {
-        autoPlayButton.textContent = 'Auto Play';
-        autoPlayButton.classList.replace('btn-danger', 'btn-success');
-        nextPhaseButton.disabled = false;
-        pauseGameButton.disabled = true;
-        
-        // Stop auto play
-        socket.emit('auto_play', false);
-    }
-}
-
-// Pause the game
-function pauseGame() {
-    socket.emit('pause_game');
-    pauseGameButton.disabled = true;
-}
-
 // Reset the game
 function resetGame() {
     socket.emit('reset_game');
@@ -268,8 +233,6 @@ function resetGame() {
     // Reset UI
     startGameButton.disabled = false;
     nextPhaseButton.disabled = true;
-    autoPlayButton.disabled = true;
-    pauseGameButton.disabled = true;
     resetGameButton.disabled = true;
     
     // Enable settings
@@ -290,7 +253,6 @@ function resetGame() {
         players: [],
         messages: [],
         events: [],
-        autoPlay: false,
         currentSpeaker: null,
         waitingForContinue: false
     };
@@ -305,10 +267,6 @@ function resetGame() {
     currentSpeakerName.textContent = 'None';
     currentSpeakerMessage.textContent = 'Waiting for the game to start...';
     continueButton.disabled = true;
-    
-    // Reset auto play button
-    autoPlayButton.textContent = 'Auto Play';
-    autoPlayButton.classList.replace('btn-danger', 'btn-success');
     
     addLogEntry('Game reset', 'info');
 }
@@ -739,16 +697,6 @@ function continueAfterSpeaker() {
     playerAvatars.forEach(avatar => {
         avatar.classList.remove('pulse');
     });
-    
-    // If auto play was active, resume it
-    if (gameState.autoPlay) {
-        autoPlayButton.textContent = 'Stop Auto Play';
-        autoPlayButton.classList.replace('btn-success', 'btn-danger');
-        pauseGameButton.disabled = false;
-        
-        // Resume auto play
-        socket.emit('auto_play', true);
-    }
     
     // Log continuation
     addLogEntry('Continuing to next speaker', 'info');

@@ -31,7 +31,6 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Game instance
 game = None
-auto_play = False
 current_speaker_index = 0
 speakers_queue = []
 
@@ -211,34 +210,12 @@ def handle_next_speaker():
         emit("center_display", {"active": False})
 
 
-@socketio.on("auto_play")
-def handle_auto_play(enabled):
-    """Handle auto play request."""
-    global auto_play
-
-    auto_play = enabled
-    logger.info(f"Auto play {'enabled' if enabled else 'disabled'}")
-
-    if enabled:
-        socketio.start_background_task(auto_play_game)
-
-
-@socketio.on("pause_game")
-def handle_pause_game():
-    """Handle pause game request."""
-    global auto_play
-
-    auto_play = False
-    logger.info("Game paused")
-
-
 @socketio.on("reset_game")
 def handle_reset_game():
     """Handle reset game request."""
-    global game, auto_play, speakers_queue, current_speaker_index
+    global game, speakers_queue, current_speaker_index
 
     game = None
-    auto_play = False
     speakers_queue = []
     current_speaker_index = 0
     logger.info("Game reset")
@@ -325,29 +302,6 @@ def handle_get_player_memory(player_id):
     })
 
 
-def auto_play_game():
-    """Auto play the game."""
-    global game, auto_play, speakers_queue, current_speaker_index
-
-    while auto_play and game and not game.game_state.game_over:
-        # Wait a bit to make the game more watchable
-        socketio.sleep(3)
-
-        # If waiting for continue button, move to next speaker
-        if speakers_queue and current_speaker_index < len(speakers_queue):
-            handle_next_speaker()
-            socketio.sleep(5)  # Wait between speakers
-        else:
-            # Run the current phase
-            handle_next_phase()
-            socketio.sleep(2)  # Wait between phases
-
-        # Check if game is over
-        if game and game.game_state.game_over:
-            emit_game_over()
-            break
-
-
 def emit_game_state():
     """Emit the current game state to all clients."""
     global game
@@ -385,10 +339,6 @@ def emit_game_state():
 
     # Emit game state
     socketio.emit("game_state", state)
-
-    # Emit events
-    # for event in game.game_state.events[-5:]:  # Only send the last 5 events
-    #     emit_event(event)
 
 
 def emit_event(event):
