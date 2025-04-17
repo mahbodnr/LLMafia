@@ -27,12 +27,12 @@ const autoPlayButton = document.getElementById('auto-play');
 const pauseGameButton = document.getElementById('pause-game');
 const resetGameButton = document.getElementById('reset-game');
 const playersContainer = document.getElementById('players-container');
-const gameAnnouncements = document.getElementById('game-announcements');
 const chatMessages = document.getElementById('chat-messages');
 const gameLog = document.getElementById('game-log');
 const currentSpeakerName = document.getElementById('current-speaker-name');
 const currentSpeakerMessage = document.getElementById('current-speaker-message');
 const continueButton = document.getElementById('continue-button');
+const centerDisplay = document.getElementById('center-display');
 
 // Game settings elements
 const playerCountSelect = document.getElementById('player-count');
@@ -53,6 +53,15 @@ const totalMessagesElement = document.getElementById('total-messages');
 const totalVotesElement = document.getElementById('total-votes');
 const downloadTranscriptButton = document.getElementById('download-transcript');
 const newGameButton = document.getElementById('new-game');
+
+// Player memory modal elements
+const playerMemoryModal = new bootstrap.Modal(document.getElementById('player-memory-modal'));
+const memoryPlayerName = document.getElementById('memory-player-name');
+const memoryPlayerRole = document.getElementById('memory-player-role');
+const memoryPlayerTeam = document.getElementById('memory-player-team');
+const memoryPlayerStatus = document.getElementById('memory-player-status');
+const memoryLoading = document.getElementById('memory-loading');
+const memoryContent = document.getElementById('memory-content');
 
 // Initialize the UI
 document.addEventListener('DOMContentLoaded', () => {
@@ -109,9 +118,31 @@ function initializeSocket() {
         }
     });
 
+    socket.on('center_display', (data) => {
+        console.log("Received center display update:", data);
+        if (data.active) {
+            // Show center display with speaker info
+            centerDisplay.style.display = 'flex';
+            currentSpeakerName.textContent = data.player_name;
+            currentSpeakerMessage.textContent = data.message;
+            continueButton.disabled = false;
+            nextPhaseButton.disabled = true;
+        } else {
+            // Hide center display
+            centerDisplay.style.display = 'none';
+            continueButton.disabled = true;
+            nextPhaseButton.disabled = false;
+        }
+    });
+
     socket.on('player_reaction', (data) => {
         console.log("Received player reaction:", data);
         handlePlayerReaction(data.player_id, data.target_id, data.reaction_type);
+    });
+
+    socket.on('player_memory', (data) => {
+        console.log("Received player memory:", data);
+        displayPlayerMemory(data);
     });
 }
 
@@ -269,7 +300,6 @@ function resetGame() {
     gameRoundElement.querySelector('span').textContent = '0';
     gameTimeElement.querySelector('span').textContent = 'Day';
     playersContainer.innerHTML = '';
-    gameAnnouncements.innerHTML = 'Welcome to the Mafia Game with LLM Agents! Configure your game settings and press "Start New Game" to begin.';
     chatMessages.innerHTML = '';
     gameLog.innerHTML = '';
     currentSpeakerName.textContent = 'None';
@@ -374,8 +404,120 @@ function updatePlayers(players) {
 
 // Show player details
 function showPlayerDetails(player) {
-    // TODO: Implement player details modal or sidebar
-    console.log('Player details:', player);
+    console.log('Showing player details:', player);
+    
+    // Set player information in the modal
+    memoryPlayerName.textContent = player.name;
+    
+    // Style badges according to player status
+    memoryPlayerRole.textContent = player.role || 'Unknown';
+    memoryPlayerRole.className = `badge rounded-pill bg-${getRoleBadgeColor(player.role)}`;
+    
+    memoryPlayerTeam.textContent = player.team || 'Unknown';
+    memoryPlayerTeam.className = `badge rounded-pill bg-${player.team === 'Village' ? 'success' : 'danger'}`;
+    
+    memoryPlayerStatus.textContent = player.status;
+    memoryPlayerStatus.className = `badge rounded-pill bg-${player.status === 'Alive' ? 'success' : 'danger'}`;
+    
+    // Show loading indicator
+    memoryLoading.style.display = 'block';
+    memoryContent.innerHTML = '';
+    
+    // Show the modal
+    playerMemoryModal.show();
+    
+    // Request player memory from the server
+    socket.emit('get_player_memory', player.id);
+}
+
+// Get appropriate badge color for role
+function getRoleBadgeColor(role) {
+    if (!role) return 'secondary';
+    
+    switch (role.toLowerCase()) {
+        case 'mafia':
+            return 'danger';
+        case 'villager':
+            return 'success';
+        case 'doctor':
+            return 'info';
+        case 'detective':
+            return 'primary';
+        case 'godfather':
+            return 'dark';
+        default:
+            return 'secondary';
+    }
+}
+
+// Display player memory
+function displayPlayerMemory(data) {
+    // Hide loading indicator
+    memoryLoading.style.display = 'none';
+    
+    // If no memory entries, show a message
+    if (!data.memory || data.memory.length === 0) {
+        memoryContent.innerHTML = '<div class="alert alert-info">This player has no memory entries.</div>';
+        return;
+    }
+    
+    // Create memory timeline
+    let html = '<div class="memory-timeline">';
+    
+    data.memory.forEach(entry => {
+        // Check if it's an event or message type
+        if (entry.type === "event") {
+            html += createEventMemoryEntry(entry);
+        } else if (entry.type === "message") {
+            html += createMessageMemoryEntry(entry, data.name);
+        } else {
+            // Fallback for unknown types
+            html += createEventMemoryEntry({
+                round: entry.round,
+                phase: entry.phase,
+                description: "Unknown memory entry type"
+            });
+        }
+    });
+    
+    html += '</div>';
+    memoryContent.innerHTML = html;
+}
+
+// Create HTML for an event memory entry
+function createEventMemoryEntry(entry) {
+    return `
+        <div class="memory-entry memory-event fade-in">
+            <div class="memory-entry-header">
+                <span class="memory-round">Round ${entry.round}</span>
+                <span class="memory-phase">${entry.phase}</span>
+                <span class="memory-type-badge event-badge">Event</span>
+            </div>
+            <div class="memory-entry-content">${entry.description}</div>
+        </div>
+    `;
+}
+
+// Create HTML for a message memory entry
+function createMessageMemoryEntry(entry, playerName) {
+    // Determine if the message is from the player or someone else
+    const isPlayerMessage = entry.sender === playerName;
+    const messageClass = isPlayerMessage ? 'my-message' : 'other-message';
+    const publicPrivate = entry.public ? 'Public' : 'Private';
+    
+    return `
+        <div class="memory-entry memory-message ${messageClass} fade-in">
+            <div class="memory-entry-header">
+                <span class="memory-round">Round ${entry.round}</span>
+                <span class="memory-phase">${entry.phase}</span>
+                <span class="memory-type-badge message-badge ${entry.public ? 'public-message' : 'private-message'}">${publicPrivate}</span>
+            </div>
+            <div class="message-details">
+                <div class="message-sender">${entry.sender}</div>
+                <div class="memory-entry-content">${entry.content}</div>
+            </div>
+        </div>
+    `;
 }
 
 // Update day/night cycle with visibility adjustments
@@ -420,11 +562,8 @@ function adjustVisibilityForNight() {
         });
     }
     
-    // Add night mode class to game announcements
-    gameAnnouncements.classList.add('night-mode');
-    
-    // Add night mode class to current speaker display
-    document.querySelector('.current-speaker').classList.add('night-mode');
+    // Add night mode class to center display
+    centerDisplay.classList.add('night-mode');
 }
 
 // Restore visibility for day phase
@@ -435,26 +574,14 @@ function restoreVisibilityForDay() {
         msg.classList.remove('night-hidden');
     });
     
-    // Remove night mode class from game announcements
-    gameAnnouncements.classList.remove('night-mode');
-    
-    // Remove night mode class from current speaker display
-    document.querySelector('.current-speaker').classList.remove('night-mode');
+    // Remove night mode class from center display
+    centerDisplay.classList.remove('night-mode');
 }
 
 // Handle game events
 function handleGameEvent(event) {
     // Add to game events
     gameState.events.push(event);
-    
-    // Update announcements
-    if (event.public) {
-        // Add to announcements instead of replacing
-        gameAnnouncements.innerHTML += `<div class="fade-in announcement-item">${event.description}</div>`;
-        
-        // Scroll to bottom of announcements
-        gameAnnouncements.scrollTop = gameAnnouncements.scrollHeight;
-    }
     
     // Add to log
     addLogEntry(event.description, getEventLogType(event.event_type));
@@ -518,24 +645,8 @@ function updateCurrentSpeaker(speakerId, speakerName, message) {
     gameState.currentSpeaker = speakerId;
     gameState.waitingForContinue = true;
     
-    // Update UI
-    currentSpeakerName.textContent = speakerName;
-    currentSpeakerMessage.textContent = message;
-    
-    // Enable continue button
-    continueButton.disabled = false;
-    
-    // Disable auto play and next phase buttons while waiting
-    if (gameState.autoPlay) {
-        pauseGame();
-    }
-    nextPhaseButton.disabled = true;
-    
     // Highlight the current speaker's avatar
     highlightCurrentSpeaker(speakerId);
-    
-    // Scroll to the current speaker's message
-    currentSpeakerMessage.scrollIntoView({ behavior: 'smooth' });
 }
 
 // Highlight current speaker
@@ -622,9 +733,6 @@ function continueAfterSpeaker() {
     
     // Disable continue button
     continueButton.disabled = true;
-    
-    // Enable next phase button
-    nextPhaseButton.disabled = false;
     
     // Remove highlight from current speaker
     const playerAvatars = document.querySelectorAll('.player-avatar');

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,6 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="static/css/style.css">
 </head>
+
 <body class="day-mode">
     <div class="container-fluid">
         <div class="row">
@@ -27,7 +29,8 @@
                         <div class="game-controls mt-4">
                             <h4>Controls</h4>
                             <button id="start-game" class="btn btn-primary btn-block mb-2">Start New Game</button>
-                            <button id="next-phase" class="btn btn-secondary btn-block mb-2" disabled>Next Phase</button>
+                            <button id="next-phase" class="btn btn-secondary btn-block mb-2" disabled>Next
+                                Phase</button>
                             <button id="auto-play" class="btn btn-success btn-block mb-2" disabled>Auto Play</button>
                             <button id="pause-game" class="btn btn-warning btn-block mb-2" disabled>Pause</button>
                             <button id="reset-game" class="btn btn-danger btn-block" disabled>Reset</button>
@@ -37,8 +40,8 @@
                             <div class="form-group mb-2">
                                 <label for="player-count">Number of Players:</label>
                                 <select id="player-count" class="form-control">
-                                    <option value="5">5 Players</option>
-                                    <option value="7" selected>7 Players</option>
+                                    <option value="5" selected>5 Players</option>
+                                    <option value="7">7 Players</option>
                                     <option value="9">9 Players</option>
                                     <option value="11">11 Players</option>
                                 </select>
@@ -66,20 +69,20 @@
                             <div class="form-group mb-2">
                                 <label for="discussion-rounds">Discussion Rounds:</label>
                                 <select id="discussion-rounds" class="form-control">
-                                    <option value="1">1 Round</option>
+                                    <option value="1" selected>1 Round</option>
                                     <option value="2">2 Rounds</option>
-                                    <option value="3" selected>3 Rounds</option>
+                                    <option value="3">3 Rounds</option>
                                 </select>
                             </div>
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="verbose-mode" checked>
+                                <input class="form-check-input" type="checkbox" id="verbose-mode">
                                 <label class="form-check-label" for="verbose-mode">Verbose Mode</label>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            
+
             <!-- Game Main Display -->
             <div class="col-md-6 game-display">
                 <div class="card">
@@ -91,15 +94,11 @@
                             <div id="players-container" class="players-container">
                                 <!-- Player avatars will be dynamically added here -->
                             </div>
-                        </div>
-                        
-                        <!-- Current Speaker Display -->
-                        <div class="current-speaker mt-4">
-                            <div class="card">
-                                <div class="card-header">
+
+                            <!-- Center Display for Current Speaker -->
+                            <div id="center-display" class="center-display" style="display: none;">
+                                <div class="center-content">
                                     <h4>Current Speaker: <span id="current-speaker-name">None</span></h4>
-                                </div>
-                                <div class="card-body">
                                     <div id="current-speaker-message" class="speaker-message">
                                         Waiting for the game to start...
                                     </div>
@@ -109,23 +108,10 @@
                                 </div>
                             </div>
                         </div>
-                        
-                        <div class="game-announcement mt-4">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h4>Game Announcements</h4>
-                                </div>
-                                <div class="card-body">
-                                    <div id="game-announcements" class="announcement-text">
-                                        Welcome to the Mafia Game with LLM Agents! Configure your game settings and press "Start New Game" to begin.
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
-            
+
             <!-- Game Chat and Log -->
             <div class="col-md-3 game-log">
                 <div class="card">
@@ -202,8 +188,39 @@
         </div>
     </div>
 
+    <!-- Player Memory Modal -->
+    <div class="modal fade" id="player-memory-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><span id="memory-player-name">Player</span>'s Memory</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="player-info mb-3">
+                        <span class="badge rounded-pill" id="memory-player-role">Role</span>
+                        <span class="badge rounded-pill" id="memory-player-team">Team</span>
+                        <span class="badge rounded-pill" id="memory-player-status">Status</span>
+                    </div>
+                    <div id="player-memory-container">
+                        <div class="text-center my-4" id="memory-loading">
+                            Loading memory...
+                        </div>
+                        <div id="memory-content">
+                            <!-- Memory entries will be added here -->
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.min.js"></script>
     <script src="static/js/main.js"></script>
 </body>
+
 </html>

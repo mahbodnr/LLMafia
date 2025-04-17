@@ -265,6 +265,9 @@ class GameController:
         # Run the phase
         controller.run()
 
+        # update agent memories
+        controller._update_agent_memories()
+    
     def advance_phase(self):
         """Advance to the next game phase."""
         current_phase = self.game_state.current_phase
@@ -383,6 +386,12 @@ class DayDiscussionController(PhaseController):
         # Each player takes a turn to speak
         for player in alive_players:
             agent = self.agents[player.id]
+
+            # Update agent memory with the current game state
+            # agent.update_memory(self.game_state)
+
+            # Update all agents' memories
+            self._update_agent_memories()
 
             # Generate discussion message
             message_content = agent.generate_day_discussion(self.game_state)

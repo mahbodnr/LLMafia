@@ -35,7 +35,7 @@ DEFAULT_GAME_SETTINGS = {
     "agent": {
         "verbosity": "elaborate",  # "brief" or "elaborate"
         "max_message_length": 200,  # Maximum length of agent messages
-        "memory_limit": 10,  # Number of past events to remember
+        "memory_limit": None,  # Number of past events to remember
     },
     
     # Game mechanics

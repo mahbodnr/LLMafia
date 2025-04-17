@@ -7,9 +7,9 @@
     --mafia-color: #dc3545;
     --doctor-color: #17a2b8;
     --detective-color: #6610f2;
-    --godfather-color: #6c757d;
+    --godfather-color: #9c0514;
     --alive-color: #28a745;
-    --dead-color: #dc3545;
+    --dead-color: #585858;
 }
 
 body {
@@ -61,12 +61,47 @@ body.night-mode {
 .village-circle {
     position: relative;
     width: 100%;
-    padding-bottom: 100%;
-    margin: 0 auto;
+    aspect-ratio: 1 / 1;
     border-radius: 50%;
-    background-color: #e9ecef;
-    border: 5px solid #343a40;
+    background-color: #d0eeae;
+    margin: 0 auto;
     overflow: hidden;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+    transition: background-color 2s ease;
+}
+
+.night-mode .village-circle {
+    background-color: #263238;
+}
+
+.center-display {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60%;
+    max-height: 60%;
+    background-color: rgba(255, 255, 255, 0.85);
+    border-radius: 10px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    overflow-y: auto;
+    transition: background-color 0.5s ease;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+}
+
+.night-mode .center-display {
+    background-color: rgba(38, 50, 56, 0.85);
+    color: #fff;
+}
+
+.center-content {
+    text-align: center;
+    width: 100%;
 }
 
 .players-container {
@@ -176,14 +211,19 @@ body.night-mode {
 }
 
 .speaker-message {
-    font-size: 18px;
-    line-height: 1.6;
-    padding: 15px;
-    border-radius: 8px;
-    background-color: #f8f9fa;
-    border-left: 5px solid #007bff;
-    margin-bottom: 15px;
-    min-height: 100px;
+    margin-top: 10px;
+    font-size: 1.1rem;
+    line-height: 1.5;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.7);
+    border-radius: 5px;
+}
+
+.night-mode .speaker-message {
+    background-color: rgba(55, 71, 79, 0.7);
+    color: #e0e0e0;
 }
 
 .reaction {
@@ -218,12 +258,18 @@ body.night-mode {
 /* Game Chat and Log Styles */
 .game-log .card {
     height: calc(50vh - 30px);
-    overflow-y: auto;
+    overflow-y: hidden; /* Changed from auto to hidden */
+}
+
+.game-log .card-body {
+    height: calc(100% - 56px); /* Account for card header height */
+    padding: 0;  /* Remove default padding */
+    overflow: hidden; /* Ensure no scroll on card body */
 }
 
 .chat-container, .log-container {
-    height: calc(100% - 20px);
-    overflow-y: auto;
+    height: 100%; /* Take full height of parent */
+    overflow-y: auto; /* Only this element will scroll */
     padding: 10px;
 }
 
@@ -327,6 +373,17 @@ body.night-mode {
     color: #f8f9fa;
 }
 
+/* Ensure the continue button has a good contrast */
+.night-mode #continue-button {
+    background-color: #5c6bc0;
+    border-color: #3f51b5;
+}
+
+.night-mode #continue-button:disabled {
+    background-color: #455a64;
+    border-color: #37474f;
+}
+
 /* Animations */
 @keyframes pulse {
     0% {
@@ -383,6 +440,162 @@ body.night-mode {
     animation: nightToDay 2s ease-in-out;
 }
 
+/* Player Memory Modal Styles */
+.memory-timeline {
+    position: relative;
+    margin-left: 20px;
+    padding-left: 30px;
+    border-left: 3px solid #dee2e6;
+}
+
+.memory-entry {
+    position: relative;
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Common before element for the timeline dot */
+.memory-entry::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: -42px;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 3px solid white;
+}
+
+/* Event-specific styles */
+.memory-event::before {
+    background-color: #17a2b8; /* Info blue color for events */
+    box-shadow: 0 0 0 2px #17a2b8;
+}
+
+.memory-event {
+    border-left: 4px solid #17a2b8;
+}
+
+/* Message-specific styles */
+.memory-message::before {
+    background-color: #6f42c1; /* Purple for messages */
+    box-shadow: 0 0 0 2px #6f42c1;
+}
+
+.memory-message {
+    border-left: 4px solid #6f42c1;
+}
+
+.my-message {
+    border-left: 4px solid #007bff; /* Blue for player's messages */
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+.my-message::before {
+    background-color: #007bff;
+    box-shadow: 0 0 0 2px #007bff;
+}
+
+.memory-type-badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    margin-left: auto;
+}
+
+.event-badge {
+    background-color: #17a2b8;
+    color: white;
+}
+
+.message-badge {
+    background-color: #6f42c1;
+    color: white;
+}
+
+.public-message {
+    background-color: #28a745;
+}
+
+.private-message {
+    background-color: #dc3545;
+}
+
+.message-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.message-sender {
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #343a40;
+}
+
+.night-mode .message-sender {
+    color: #f8f9fa;
+}
+
+.memory-entry-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    color: #6c757d;
+    font-size: 0.85rem;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 8px;
+}
+
+.memory-entry-content {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #212529;
+}
+
+.memory-round {
+    font-weight: bold;
+}
+
+.memory-phase {
+    background-color: #e9ecef;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
+
+.night-mode .memory-entry {
+    background-color: #343a40;
+    color: #f8f9fa;
+}
+
+.night-mode .memory-entry-content {
+    color: #f8f9fa;
+}
+
+.night-mode .memory-entry-header {
+    color: #adb5bd;
+    border-bottom-color: #495057;
+}
+
+.night-mode .memory-phase {
+    background-color: #495057;
+    color: #e9ecef;
+}
+
+.player-info {
+    display: flex;
+    gap: 10px;
+}
+
+.player-info .badge {
+    font-size: 0.9rem;
+    padding: 5px 10px;
+}
+
 /* Responsive Adjustments */
 @media (max-width: 992px) {
     .control-panel .card, .game-display .card, .game-log .card {
@@ -392,6 +605,7 @@ body.night-mode {
     
     .chat-container, .log-container {
         height: 300px;
+        overflow-y: auto;
     }
     
     .player-avatar {

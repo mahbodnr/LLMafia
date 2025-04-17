@@ -99,7 +99,7 @@ def handle_start_game(settings):
         "agent": {
             "verbosity": "elaborate" if settings["verboseMode"] else "brief",
             "max_message_length": 200,
-            "memory_limit": 10,
+            "memory_limit": None,
         },
         "mechanics": {
             "godfather_appears_innocent": True,
@@ -146,6 +146,7 @@ def handle_next_phase():
 
     logger.info("Moving to next phase")
 
+    
     # Run the current phase
     phase_result = game.game_controller.run_phase()
 
@@ -155,13 +156,15 @@ def handle_next_phase():
 
     # If this is a discussion phase, prepare speakers queue
     current_phase = game.game_state.current_phase
-    logger.info(f"Current phase: {current_phase}")
+    cuurent_round = game.game_state.current_round
+    logger.info(f"Current phase: {current_phase.name}, Round: {cuurent_round}")
 
     if "discussion" in current_phase.name.lower():
         logger.info("Preparing speakers queue for discussion phase")
         # Get all messages for this phase
         for message in game.game_state.messages:
-            if message.phase == current_phase: # and message.public:
+            if message.phase == current_phase and message.round_num == cuurent_round:
+                # and message.public?
                 speakers_queue.append(
                     message
                 )
@@ -190,6 +193,7 @@ def handle_next_speaker():
 
     if not speakers_queue:
         logger.info("No speakers in queue")
+        emit("center_display", {"active": False})
         return
 
     # Move to next speaker
@@ -204,6 +208,7 @@ def handle_next_speaker():
         logger.info("No more speakers in queue")
         # No more speakers
         emit("next_speaker", {"speaker_id": None})
+        emit("center_display", {"active": False})
 
 
 @socketio.on("auto_play")
@@ -271,6 +276,53 @@ def handle_player_reaction(data):
     logger.info(
         f"Player {data['player_id']} reacted to {data['target_id']} with {data['reaction_type']}"
     )
+
+
+@socketio.on("clear_center_display")
+def handle_clear_center_display():
+    """Handle clearing the center display when not needed."""
+    emit("center_display", {"active": False})
+
+
+@socketio.on("get_player_memory")
+def handle_get_player_memory(player_id):
+    """Handle request for player memory."""
+    global game
+    
+    if not game or player_id not in game.game_state.players:
+        emit("player_memory", {"player_id": player_id, "memory": [], "name": "Unknown"})
+        return
+    
+    player = game.game_state.players[player_id]
+    memory_entries = []
+    
+    # Convert memory entries to serializable format
+    if hasattr(player, 'memory') and player.memory:
+        for entry in player.memory:
+            memory_item = {}
+            
+            memory_item["type"] = entry["type"]
+            memory_item["round"] = entry["round"]
+            memory_item["phase"] = entry["phase"]
+            
+            if entry["type"] == "event":
+                memory_item["description"] = entry["description"]
+            elif entry["type"] == "message":
+                memory_item["sender"] = entry["sender"]
+                memory_item["content"] = entry["content"]
+                memory_item["public"] = entry["public"]
+                
+            memory_entries.append(memory_item)
+    
+    # Send player memory back to client
+    emit("player_memory", {
+        "player_id": player_id,
+        "name": player.name,
+        "role": player.role.name.capitalize(),
+        "team": player.team.name.capitalize(),
+        "is_alive": player.is_alive,
+        "memory": memory_entries
+    })
 
 
 def auto_play_game():
@@ -374,8 +426,15 @@ def emit_speaker_prompt(message):
         "speaker_id": message.sender_id,
         "player_name": game.game_state.players[message.sender_id].name,
         "message": message.content,
-        })
+    })
     
+    emit("center_display", {
+        "active": True,
+        "speaker_id": message.sender_id,
+        "player_name": game.game_state.players[message.sender_id].name,
+        "message": message.content
+    })
+
 def emit_game_over():
     """Emit game over event to all clients."""
     global game

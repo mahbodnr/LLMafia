@@ -26,11 +26,12 @@ class BaseAgent(ABC):
         """
         self.player = player
         self.config = config
-        self.memory_limit = config.get("memory_limit", 10)
+        self.memory_limit = config.get("memory_limit", None)
         self.max_message_length = config.get("max_message_length", 200)
         self.verbosity = config.get("verbosity", "elaborate")
         self.llm = None  # Will be set by subclasses
         self.chat_history: List[BaseMessage] = []
+        self.saved_memory: List[GameEvent] = [] # To track saved events
     
     @abstractmethod
     def initialize_llm(self):
@@ -56,7 +57,7 @@ class BaseAgent(ABC):
         # Update player's memory with new events
         new_memories = []
         for event in visible_events:
-            if event not in self.player.memory:
+            if event not in self.saved_memory:
                 memory_entry = {
                     "type": "event",
                     "round": event.round_num,
@@ -64,13 +65,11 @@ class BaseAgent(ABC):
                     "description": event.description
                 }
                 new_memories.append(memory_entry)
+                self.saved_memory.append(event)
         
         # Add messages to memory
         for msg in visible_messages:
-            if all(m.get("type") != "message" or 
-                   m.get("sender") != msg.sender_id or 
-                   m.get("content") != msg.content 
-                   for m in self.player.memory):
+            if msg not in self.saved_memory:
                 memory_entry = {
                     "type": "message",
                     "round": msg.round_num,
@@ -80,12 +79,13 @@ class BaseAgent(ABC):
                     "public": msg.public
                 }
                 new_memories.append(memory_entry)
+                self.saved_memory.append(msg)
         
         # Update memory with new entries
         self.player.memory.extend(new_memories)
         
         # Trim memory to limit if needed
-        if len(self.player.memory) > self.memory_limit:
+        if self.memory_limit and len(self.player.memory) > self.memory_limit:
             # Keep the most recent events
             self.player.memory = self.player.memory[-self.memory_limit:]
     
