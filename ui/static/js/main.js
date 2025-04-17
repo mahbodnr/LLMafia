@@ -13,7 +13,8 @@ let gameState = {
     messages: [],
     events: [],
     currentSpeaker: null,
-    waitingForContinue: false
+    waitingForContinue: false,
+    waitingForMessages: false
 };
 
 // DOM Elements
@@ -105,7 +106,15 @@ function initializeSocket() {
     socket.on('next_speaker', (data) => {
         console.log("Received next speaker:", data);
         if (data.speaker_id) {
+            // Make sure we update the UI immediately
             updateCurrentSpeaker(data.speaker_id, data.player_name, data.message);
+            
+            // Show center display explicitly
+            centerDisplay.style.display = 'flex';
+            currentSpeakerName.textContent = data.player_name;
+            currentSpeakerMessage.textContent = data.message;
+            continueButton.disabled = false;
+            nextPhaseButton.disabled = true;
         } else {
             // No more speakers, enable next phase button
             nextPhaseButton.disabled = false;
@@ -118,10 +127,10 @@ function initializeSocket() {
     socket.on('center_display', (data) => {
         console.log("Received center display update:", data);
         if (data.active) {
-            // Show center display with speaker info
+            // Force update UI regardless of previous state
             centerDisplay.style.display = 'flex';
-            currentSpeakerName.textContent = data.player_name;
-            currentSpeakerMessage.textContent = data.message;
+            currentSpeakerName.textContent = data.player_name || 'Speaker';
+            currentSpeakerMessage.textContent = data.message || 'No message';
             continueButton.disabled = false;
             nextPhaseButton.disabled = true;
         } else {
@@ -140,6 +149,20 @@ function initializeSocket() {
     socket.on('player_memory', (data) => {
         console.log("Received player memory:", data);
         displayPlayerMemory(data);
+    });
+
+    socket.on('waiting_for_messages', (data) => {
+        console.log("Waiting for more messages:", data);
+        gameState.waitingForMessages = data.active;
+        
+        if (data.active) {
+            // Show waiting indicator and enable message check button
+            showWaitingIndicator();
+        } else {
+            // Hide waiting indicator
+            hideWaitingIndicator();
+            nextPhaseButton.disabled = false;
+        }
     });
 }
 
@@ -254,7 +277,8 @@ function resetGame() {
         messages: [],
         events: [],
         currentSpeaker: null,
-        waitingForContinue: false
+        waitingForContinue: false,
+        waitingForMessages: false
     };
     
     // Reset UI elements
@@ -571,6 +595,8 @@ function addChatMessage(message) {
     // Add to messages
     gameState.messages.push(message);
     
+    console.log(`Adding chat message from ${message.sender_name}: ${message.content.substring(0, 30)}...`);
+    
     // Create message element
     const messageElement = document.createElement('div');
     messageElement.className = `chat-message ${message.public ? 'public' : 'mafia'} fade-in`;
@@ -588,11 +614,6 @@ function addChatMessage(message) {
     
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
-    
-    // Update current speaker display
-    if (message.public) {
-        updateCurrentSpeaker(message.sender_id, message.sender_name, message.content);
-    }
 }
 
 // Update current speaker display
@@ -703,6 +724,76 @@ function continueAfterSpeaker() {
     
     // Move to next speaker
     socket.emit('next_speaker');
+}
+
+// Show waiting indicator for more messages
+function showWaitingIndicator() {
+    // First, make sure we have the center display
+    if (!centerDisplay) return;
+    
+    // Show center display with waiting message
+    centerDisplay.style.display = 'flex';
+    
+    const centerContent = centerDisplay.querySelector('.center-content');
+    centerContent.innerHTML = `
+        <h4>Waiting for More Messages</h4>
+        <div class="waiting-message">
+            Agents are thinking... More messages will appear shortly.
+        </div>
+        <div class="text-center mt-3">
+            <button id="check-messages-button" class="btn btn-primary">Check for Messages</button>
+        </div>
+    `;
+    
+    // Add check messages button event listener
+    const checkMessagesButton = document.getElementById('check-messages-button');
+    if (checkMessagesButton) {
+        checkMessagesButton.addEventListener('click', checkForNewMessages);
+    }
+}
+
+// Hide waiting indicator
+function hideWaitingIndicator() {
+    if (centerDisplay) {
+        centerDisplay.style.display = 'none';
+    }
+    gameState.waitingForMessages = false;
+}
+
+// Check for new messages
+function checkForNewMessages() {
+    // Disable button while checking
+    const checkMessagesButton = document.getElementById('check-messages-button');
+    if (checkMessagesButton) {
+        checkMessagesButton.disabled = true;
+        checkMessagesButton.textContent = 'Checking...';
+    }
+    
+    // Request server to check for new messages
+    socket.emit('check_new_messages', (hasNewMessages) => {
+        if (!hasNewMessages) {
+            // Update UI to indicate no new messages
+            const centerContent = centerDisplay.querySelector('.center-content');
+            centerContent.innerHTML = `
+                <h4>No More Messages Yet</h4>
+                <div class="waiting-message">
+                    No new messages available yet. Check again in a moment.
+                </div>
+                <div class="text-center mt-3">
+                    <button id="check-again-button" class="btn btn-primary">Check Again</button>
+                    <button id="proceed-button" class="btn btn-secondary ml-2">Proceed to Next Phase</button>
+                </div>
+            `;
+            
+            // Add event listeners to new buttons
+            document.getElementById('check-again-button').addEventListener('click', checkForNewMessages);
+            document.getElementById('proceed-button').addEventListener('click', () => {
+                nextPhase();
+                hideWaitingIndicator();
+            });
+        }
+        // If there are new messages, they'll be handled by the next_speaker and center_display events
+    });
 }
 
 // Add log entry

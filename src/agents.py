@@ -74,7 +74,8 @@ class BaseAgent(ABC):
                     "type": "message",
                     "round": msg.round_num,
                     "phase": msg.phase.name,
-                    "sender": msg.sender_id,
+                    "sender_name": msg.sender_name,
+                    "sender_id": msg.sender_id,
                     "content": msg.content,
                     "public": msg.public
                 }
@@ -142,7 +143,7 @@ class BaseAgent(ABC):
                 memory_str += f"{i+1}. Round {memory['round']}, {memory['phase']}: {memory['description']}\n"
             elif memory["type"] == "message":
                 context = "publicly" if memory.get("public", True) else "privately"
-                memory_str += f"{i+1}. Round {memory['round']}, {memory['phase']}: {memory['sender']} said {context}: \"{memory['content']}\"\n"
+                memory_str += f"{i+1}. Round {memory['round']}, {memory['phase']}: {memory['sender_name']} ({memory['sender_id']}) said {context}: \"{memory['content']}\"\n"
         
         return memory_str
     
@@ -243,7 +244,6 @@ class DebugAgent(BaseAgent):
 
     def initialize_llm(self):
         """Initialize the language model (no-op for debug agent)."""
-        print("[DEBUG] Debug agent initialized, no LLM used.")
         self.llm = None
         self.model_name = "debug"
 
@@ -255,7 +255,12 @@ class DebugAgent(BaseAgent):
         """Generate a debug discussion message."""
         prompt = self._create_day_discussion_prompt(game_state)
         return f"Debug agent discussion: >>{prompt}<<"
-    
+
+    def generate_mafia_discussion(self, game_state: GameState) -> str:
+        """Generate a debug discussion message."""
+        prompt = self._create_day_discussion_prompt(game_state)
+        return f"Debug agent discussion: >>{prompt}<<"
+     
     def generate_day_vote(self, game_state: GameState) -> str:
         """Generate a debug vote."""
         # If no valid player found, return a random alive player that isn't self
@@ -326,6 +331,11 @@ class OpenAIAgent(BaseAgent):
         prompt = self._create_day_discussion_prompt(game_state)
         return self.generate_response(prompt)
     
+    def generate_mafia_discussion(self, game_state: GameState) -> str:
+        """Generate a discussion message during the mafia night phase."""
+        prompt = self._create_mafia_discussion_prompt(game_state)
+        return self.generate_response(prompt)
+    
     def generate_day_vote(self, game_state: GameState) -> str:
         """Generate a vote during the day phase."""
         prompt = self._create_day_vote_prompt(game_state)
@@ -337,6 +347,8 @@ class OpenAIAgent(BaseAgent):
             if player.name.lower() in response.lower() and player_id != self.player.id:
                 return player_id
         
+        print(f"[Debug] No valid player found in response: {response}")
+
         return ""
     
         # # If no valid player found, return a random alive player that isn't self
@@ -362,12 +374,13 @@ class OpenAIAgent(BaseAgent):
                 target_id = player_id
                 break
         
-        # if not target_id:
-        #     # If no valid target found, choose randomly
-        #     import random
-        #     alive_players = [pid for pid in game_state.alive_players.keys() if pid != self.player.id]
-        #     if alive_players:
-        #         target_id = random.choice(alive_players)
+        if not target_id:
+            print(f"[Debug] No valid target found in response: {response}")
+            # If no valid target found, choose randomly
+            # import random
+            # alive_players = [pid for pid in game_state.alive_players.keys() if pid != self.player.id]
+            # if alive_players:
+            #     target_id = random.choice(alive_players)
         
         if not target_id:
             return None
@@ -427,6 +440,23 @@ Your response should clearly indicate which player you're voting for by name.
 """
         return prompt
     
+
+    def _create_mafia_discussion_prompt(self, game_state: GameState) -> str:
+        """Create a prompt for mafia discussion during the night phase."""
+        prompt = f"""You are playing a Mafia/Werewolf game as a {self.player.role.name}.
+
+Mafia team members are: {', '.join([p.name for p in game_state.mafia_team])}.
+
+{self.format_game_state_for_prompt(game_state)}
+
+{self.format_memory_for_prompt()}
+
+It's now the night phase, and you are with your Mafia teammates. This is a private discussion.
+Based on your role and the information you have, what would you like to discuss with your team?
+Your response should be a message to your Mafia teammates, limited to {self.max_message_length} characters.
+"""
+        return prompt
+
     def _create_night_action_prompt(self, game_state: GameState) -> str:
         """Create a prompt for night actions."""
         action_description = ""
@@ -488,9 +518,11 @@ class AnthropicAgent(BaseAgent):
     
     # The rest of the methods are identical to OpenAIAgent
     generate_day_discussion = OpenAIAgent.generate_day_discussion
+    generate_mafia_discussion = OpenAIAgent.generate_mafia_discussion
     generate_day_vote = OpenAIAgent.generate_day_vote
     generate_night_action = OpenAIAgent.generate_night_action
     _create_day_discussion_prompt = OpenAIAgent._create_day_discussion_prompt
+    _create_mafia_discussion_prompt = OpenAIAgent._create_mafia_discussion_prompt
     _create_day_vote_prompt = OpenAIAgent._create_day_vote_prompt
     _create_night_action_prompt = OpenAIAgent._create_night_action_prompt
 
@@ -500,7 +532,7 @@ class GeminiAgent(BaseAgent):
     
     def initialize_llm(self):
         """Initialize the Google Gemini language model."""
-        from langchain_community.chat_models import ChatGoogleGenerativeAI
+        from langchain_google_genai import ChatGoogleGenerativeAI
         
         model_name = self.config.get("model", "gemini-pro")
         self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.7)
@@ -531,9 +563,11 @@ class GeminiAgent(BaseAgent):
     
     # The rest of the methods are identical to OpenAIAgent
     generate_day_discussion = OpenAIAgent.generate_day_discussion
+    generate_mafia_discussion = OpenAIAgent.generate_mafia_discussion
     generate_day_vote = OpenAIAgent.generate_day_vote
     generate_night_action = OpenAIAgent.generate_night_action
     _create_day_discussion_prompt = OpenAIAgent._create_day_discussion_prompt
+    _create_mafia_discussion_prompt = OpenAIAgent._create_mafia_discussion_prompt
     _create_day_vote_prompt = OpenAIAgent._create_day_vote_prompt
     _create_night_action_prompt = OpenAIAgent._create_night_action_prompt
 

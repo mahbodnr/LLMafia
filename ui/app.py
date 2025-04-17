@@ -6,8 +6,8 @@ import os
 import json
 import logging
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify
-from flask_socketio import SocketIO, emit
+from flask import Flask, render_template, request, jsonify, session, copy_current_request_context
+from flask_socketio import SocketIO, emit, join_room
 
 from src.game import MafiaGame
 from src.models import TeamAlignment
@@ -33,6 +33,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 game = None
 current_speaker_index = 0
 speakers_queue = []
+phase_messages = []  # Store messages generated during phase execution
 
 
 @app.route("/")
@@ -57,13 +58,14 @@ def handle_disconnect():
 @socketio.on("start_game")
 def handle_start_game(settings):
     """Handle start game request."""
-    global game, speakers_queue, current_speaker_index
+    global game, speakers_queue, current_speaker_index, phase_messages
 
     logger.info(f"Starting new game with settings: {settings}")
 
     # Reset speakers queue
     speakers_queue = []
     current_speaker_index = 0
+    phase_messages = []
 
     # Create role distribution based on settings
     roles = {
@@ -117,6 +119,7 @@ def handle_start_game(settings):
 
     # Register event handlers
     game.game_controller.register_callback("game_event", emit_event)
+    game.game_controller.register_callback("message", handle_message_callback)  # Register message callback
 
     # Send initial game state
     emit_game_state()
@@ -138,52 +141,85 @@ def handle_start_game(settings):
 @socketio.on("next_phase")
 def handle_next_phase():
     """Handle next phase request."""
-    global game, speakers_queue, current_speaker_index
+    global game, speakers_queue, current_speaker_index, phase_messages
 
     if not game or game.game_state.game_over:
         return
 
     logger.info("Moving to next phase")
-
     
-    # Run the current phase
-    phase_result = game.game_controller.run_phase()
-
-    # Reset speakers queue for the new phase
+    # Reset for new phase
+    phase_messages = []
     speakers_queue = []
     current_speaker_index = 0
 
-    # If this is a discussion phase, prepare speakers queue
-    current_phase = game.game_state.current_phase
-    cuurent_round = game.game_state.current_round
-    logger.info(f"Current phase: {current_phase.name}, Round: {cuurent_round}")
-
-    if "discussion" in current_phase.name.lower():
-        logger.info("Preparing speakers queue for discussion phase")
-        # Get all messages for this phase
-        for message in game.game_state.messages:
-            if message.phase == current_phase and message.round_num == cuurent_round:
-                # and message.public?
-                speakers_queue.append(
-                    message
-                )
-
-        logger.info(f"Speakers queue prepared with {len(speakers_queue)} speakers")
-
-        # Start with the first speaker if available
-        if speakers_queue:
-            emit_speaker_prompt(speakers_queue[0])
-            emit_message(speakers_queue[0])
-            current_speaker_index = 0
-
-    # Send updated game state
+    # Save the current request context for the background thread
+    current_sid = request.sid
+    
+    # Execute phase in a background thread to avoid blocking
+    @copy_current_request_context
+    def run_phase_with_context():
+        execute_phase_in_background(current_sid)
+    
+    socketio.start_background_task(run_phase_with_context)
+    
+    # Update game state immediately
     emit_game_state()
 
-    # Check if game is over
-    if game.game_state.game_over:
-        emit_game_over()
 
-    game.game_controller.advance_phase()
+def execute_phase_in_background(sid):
+    """Execute game phase in background to allow real-time updates."""
+    global game
+    
+    if not game:
+        return
+    
+    logger.info("Executing phase in background")
+    
+    try:
+        # Run the current phase - will trigger message callbacks
+        phase_result = game.game_controller.run_phase()
+        
+        # Check if game is over
+        if game.game_state.game_over:
+            emit_game_over()
+        
+        # Advance to next phase
+        game.game_controller.advance_phase()
+        
+        # Send updated game state
+        emit_game_state()
+        
+        logger.info("Background phase execution completed")
+        
+    except Exception as e:
+        logger.error(f"Error in background thread: {e}", exc_info=True)
+
+
+def handle_message_callback(message):
+    """Handle messages as they are generated during phase execution."""
+    global phase_messages, speakers_queue
+    
+    try:
+        # Log the received message for debugging
+        logger.info(f"Message callback received: {message.sender_id} - {message.content[:20]}...")
+        
+        # Add to phase messages
+        phase_messages.append(message)
+        
+        # If this is a discussion phase message, also add to speakers queue
+        current_phase = game.game_state.current_phase
+        if "discussion" in current_phase.name.lower():
+            speakers_queue.append(message)
+            
+            # If this is the first message and no speaker is active, initiate speaker display
+            if len(speakers_queue) == 1 and current_speaker_index == 0:
+                logger.info("Emitting first speaker prompt")
+                emit_speaker_prompt(message)
+                emit_message(message)
+    except Exception as e:
+        logger.error(f"Error in message callback: {e}", exc_info=True)
+
 
 @socketio.on("next_speaker")
 def handle_next_speaker():
@@ -208,6 +244,24 @@ def handle_next_speaker():
         # No more speakers
         emit("next_speaker", {"speaker_id": None})
         emit("center_display", {"active": False})
+        
+        # If the phase is still running, inform client that more speakers may be coming
+        # if not game.game_state.current_phase.complete:
+        #     emit("waiting_for_messages", {"active": True})
+
+
+@socketio.on("check_new_messages")
+def handle_check_new_messages():
+    """Check if new messages are available for the current phase."""
+    global speakers_queue, current_speaker_index
+    
+    if current_speaker_index < len(speakers_queue) - 1:
+        current_speaker_index += 1
+        emit_speaker_prompt(speakers_queue[current_speaker_index])
+        emit_message(speakers_queue[current_speaker_index])
+        return True
+    
+    return False
 
 
 @socketio.on("reset_game")
@@ -285,7 +339,7 @@ def handle_get_player_memory(player_id):
             if entry["type"] == "event":
                 memory_item["description"] = entry["description"]
             elif entry["type"] == "message":
-                memory_item["sender"] = entry["sender"]
+                memory_item["sender"] = entry["sender_name"]
                 memory_item["content"] = entry["content"]
                 memory_item["public"] = entry["public"]
                 
@@ -300,6 +354,8 @@ def handle_get_player_memory(player_id):
         "is_alive": player.is_alive,
         "memory": memory_entries
     })
+
+    agent = game.game_controller.agents[player_id]
 
 
 def emit_game_state():
@@ -356,34 +412,50 @@ def emit_event(event):
 
 def emit_message(message):
     """Emit a chat message to all clients."""
-    sender_name = game.game_state.players[message.sender_id].name
+    try:
+        sender_name = game.game_state.players[message.sender_id].name
+        
+        logger.info(f"Emitting message: {sender_name} - {message.content[:20]}...")
+        
+        # Use socketio.emit for background thread compatibility
+        socketio.emit(
+            "chat_message",
+            {
+                "sender_id": message.sender_id,
+                "sender_name": sender_name,
+                "content": message.content,
+                "public": message.public,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in emit_message: {e}", exc_info=True)
 
-    socketio.emit(
-        "chat_message",
-        {
-            "sender_id": message.sender_id,
-            "sender_name": sender_name,
-            "content": message.content,
-            "public": message.public,
-            "timestamp": datetime.now().isoformat(),
-        },
-    )
 
 def emit_speaker_prompt(message):
     """Emit speaker prompt."""
-    
-    emit("next_speaker", {
-        "speaker_id": message.sender_id,
-        "player_name": game.game_state.players[message.sender_id].name,
-        "message": message.content,
-    })
-    
-    emit("center_display", {
-        "active": True,
-        "speaker_id": message.sender_id,
-        "player_name": game.game_state.players[message.sender_id].name,
-        "message": message.content
-    })
+    try:
+        player_name = game.game_state.players[message.sender_id].name
+        message_content = message.content
+        
+        logger.info(f"Emitting speaker prompt: {player_name}")
+        
+        # Use socketio.emit instead of emit for background thread compatibility
+        socketio.emit("next_speaker", {
+            "speaker_id": message.sender_id,
+            "player_name": player_name,
+            "message": message_content,
+        })
+        
+        socketio.emit("center_display", {
+            "active": True,
+            "speaker_id": message.sender_id,
+            "player_name": player_name,
+            "message": message_content
+        })
+    except Exception as e:
+        logger.error(f"Error in emit_speaker_prompt: {e}", exc_info=True)
+
 
 def emit_game_over():
     """Emit game over event to all clients."""

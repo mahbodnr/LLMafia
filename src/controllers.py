@@ -151,7 +151,7 @@ class GameController:
                 # "openai": {"model": "gpt-4o-mini"},
                 "debug": {"model": "debug"},
                 # "anthropic": {"model": "claude-3-7-sonnet-latest"},
-                # "google": {"model": "gemini-pro"},
+                # "google": {"model": "gemini-2.0-flash-lite"},
             },
         )
 
@@ -398,6 +398,7 @@ class DayDiscussionController(PhaseController):
 
             # Create message object
             message = Message(
+                sender_name=player.name,
                 sender_id=player.id,
                 content=message_content,
                 round_num=self.game_state.current_round,
@@ -597,19 +598,23 @@ class NightMafiaDiscussionController(PhaseController):
             mafia_players: List of alive mafia players
         """
         # Shuffle player order
-        random.shuffle(mafia_players)
+        # random.shuffle(mafia_players)
 
         # Each mafia player takes a turn to speak
         for player in mafia_players:
             agent = self.agents[player.id]
 
+            # Update agent memory with the current game state
+            agent.update_memory(self.game_state)
+
             # Generate discussion message
-            message_content = agent.generate_day_discussion(
+            message_content = agent.generate_mafia_discussion(
                 self.game_state
             )  # Reuse day discussion logic
 
             # Create message object
             message = Message(
+                sender_name=player.name,
                 sender_id=player.id,
                 content=message_content,
                 round_num=self.game_state.current_round,

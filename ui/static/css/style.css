@@ -84,14 +84,14 @@ body.night-mode {
     background-color: rgba(255, 255, 255, 0.85);
     border-radius: 10px;
     padding: 15px;
-    display: flex;
+    display: none; /* Hidden by default */
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    z-index: 10;
+    z-index: 100; /* Increase z-index */
     overflow-y: auto;
     transition: background-color 0.5s ease;
-    box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.4); /* More prominent shadow */
 }
 
 .night-mode .center-display {
@@ -594,6 +594,27 @@ body.night-mode {
 .player-info .badge {
     font-size: 0.9rem;
     padding: 5px 10px;
+}
+
+/* Waiting message styling */
+.waiting-message {
+    margin: 15px 0;
+    padding: 15px;
+    background-color: rgba(0, 123, 255, 0.2);
+    border-left: 5px solid #007bff;
+    border-radius: 4px;
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.night-mode .waiting-message {
+    background-color: rgba(0, 123, 255, 0.2);
+    color: #e0e0e0;
+}
+
+/* Button spacing */
+.ml-2 {
+    margin-left: 0.5rem;
 }
 
 /* Responsive Adjustments */

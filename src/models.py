@@ -96,6 +96,7 @@ class Action:
 @dataclass
 class Message:
     """Class representing a message sent by a player."""
+    sender_name: str
     sender_id: str
     content: str
     round_num: int
