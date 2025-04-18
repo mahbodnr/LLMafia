@@ -46,7 +46,7 @@ class GameController:
         self.event_callbacks = {
             "message": [],
             "vote": [],
-            "elimination": [],
+            # "elimination": [],
             "game_event": [],
         }
 
@@ -508,6 +508,9 @@ class DayVotingController(PhaseController):
 
             # Add vote to game state
             self.game_state.votes.append(vote)
+
+            # Emit vote event
+            self.emit_event("vote", vote)
 
             # Count vote
             votes[target_id] = votes.get(target_id, 0) + 1

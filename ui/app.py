@@ -119,6 +119,7 @@ def handle_start_game(settings):
 
     # Register event handlers
     game.game_controller.register_callback("game_event", emit_event)
+    game.game_controller.register_callback("vote", emit_vote)
     game.game_controller.register_callback("message", handle_message_callback)  # Register message callback
 
     # Send initial game state
@@ -405,6 +406,17 @@ def emit_event(event):
             "event_type": event.event_type,
             "description": event.description,
             "public": event.public,
+            "timestamp": datetime.now().isoformat(),
+        },
+    )
+
+def emit_vote(vote):
+    """Emit a vote event to all clients."""
+    socketio.emit(
+        "vote",
+        {
+            "voter_id": vote.voter_id,
+            "target_id": vote.target_id,
             "timestamp": datetime.now().isoformat(),
         },
     )
