@@ -421,7 +421,6 @@ def emit_vote(vote):
         },
     )
 
-
 def emit_message(message):
     """Emit a chat message to all clients."""
     try:

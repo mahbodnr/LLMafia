@@ -629,6 +629,9 @@ class NightMafiaDiscussionController(PhaseController):
             # Add message to game state
             self.game_state.messages.append(message)
 
+            # Emit message event
+            self.emit_event("message", message)
+            
             # Log message
             logger.info(f"[MAFIA] {player.name} says: {message_content}")
 
