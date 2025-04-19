@@ -45,9 +45,10 @@ class GameController:
 
         self.event_callbacks = {
             "message": [],
+            "game_event": [],
+            "action": [],
             "vote": [],
             # "elimination": [],
-            "game_event": [],
             "vote_result": [],
         }
 
@@ -288,11 +289,11 @@ class GameController:
         next_phase = phase_order[next_index]
 
         # In round 1, there is no voting and no night actions:
-        if self.game_state.current_round == 1:
-            if next_phase == GamePhase.DAY_VOTING:
-                next_phase = GamePhase.NIGHT_MAFIA_DISCUSSION
-            elif next_phase == GamePhase.NIGHT_ACTION:
-                next_phase = GamePhase.DAY_DISCUSSION
+        # if self.game_state.current_round == 1:
+        #     if next_phase == GamePhase.DAY_VOTING:
+        #         next_phase = GamePhase.NIGHT_MAFIA_DISCUSSION
+        #     elif next_phase == GamePhase.NIGHT_ACTION:
+        #         next_phase = GamePhase.DAY_DISCUSSION
         # If we're moving from night to day, increment the round number
         if next_phase == GamePhase.DAY_DISCUSSION:
             self.game_state.current_round += 1
@@ -752,6 +753,8 @@ class NightActionController(PhaseController):
             action = agent.generate_night_action(self.game_state)
 
             if action:
+                self.emit_event("action", action)
+
                 actions[player.role] = action
 
                 # Add action to game state

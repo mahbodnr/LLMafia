@@ -136,10 +136,35 @@ function initializeSocket() {
         if (data.active) {
             // Force update UI regardless of previous state
             centerDisplay.style.display = 'flex';
-            currentSpeakerName.textContent = data.player_name || 'Speaker';
-            currentSpeakerMessage.textContent = data.message || 'No message';
-            continueButton.disabled = false;
-            nextPhaseButton.disabled = true;
+            
+            // Check if this is a night action or a speaker message
+            if (data.is_action) {
+                // This is a night action
+                const centerContent = centerDisplay.querySelector('.center-content');
+                centerContent.innerHTML = `
+                    <h4>${data.action_type.replace(/_/g, ' ').toUpperCase()}</h4>
+                    <div class="speaker-message">
+                        <p><strong>${data.actor}</strong> ${data.description}</p>
+                        <p>Target: <strong>${data.target}</strong></p>
+                    </div>
+                    <div class="text-center mt-3">
+                        <button id="continue-action-button" class="btn btn-primary">Continue</button>
+                    </div>
+                `;
+                
+                // Add event listener to continue button for actions
+                document.getElementById('continue-action-button').addEventListener('click', () => {
+                    socket.emit('continue_action');
+                });
+                
+                nextPhaseButton.disabled = true;
+            } else {
+                // This is a regular speaker message
+                currentSpeakerName.textContent = data.player_name || 'Speaker';
+                currentSpeakerMessage.textContent = data.message || 'No message';
+                continueButton.disabled = false;
+                nextPhaseButton.disabled = true;
+            }
         } else {
             // Hide center display
             centerDisplay.style.display = 'none';

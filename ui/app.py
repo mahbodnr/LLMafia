@@ -34,6 +34,8 @@ game = None
 current_speaker_index = 0
 speakers_queue = []
 phase_messages = []  # Store messages generated during phase execution
+night_actions_queue = []  # Store night actions queue
+current_action_index = 0  # Track current action being displayed
 
 
 @app.route("/")
@@ -118,8 +120,9 @@ def handle_start_game(settings):
     game.initialize_game(player_names)
 
     # Register event handlers
-    game.game_controller.register_callback("game_event", emit_event)
+    game.game_controller.register_callback("game_event", emit_game_event)
     game.game_controller.register_callback("message", handle_message_callback)  # Register message callback
+    game.game_controller.register_callback("action", emit_action)
     game.game_controller.register_callback("vote", emit_vote)
 
     # Send initial game state
@@ -142,9 +145,9 @@ def handle_start_game(settings):
 @socketio.on("next_phase")
 def handle_next_phase():
     """Handle next phase request."""
-    global game, speakers_queue, current_speaker_index, phase_messages
+    global game, speakers_queue, current_speaker_index, phase_messages, night_actions_queue, current_action_index
 
-    if not game or game.game_state.game_over:
+    if not game or not game.game_state or game.game_state.game_over:
         return
 
     logger.info("Moving to next phase")
@@ -156,7 +159,9 @@ def handle_next_phase():
     phase_messages = []
     speakers_queue = []
     current_speaker_index = 0
-
+    night_actions_queue = []  # Clear action queue for new phase
+    current_action_index = 0
+    
     # Save the current request context for the background thread
     current_sid = request.sid
     
@@ -167,6 +172,127 @@ def handle_next_phase():
     
     socketio.start_background_task(run_phase_with_context)
 
+
+@socketio.on("continue_action_button")
+def handle_continue_action_button():
+    """Handle continue button click for night actions."""
+    global night_actions_queue, current_action_index
+    
+    # If we have no actions, do nothing
+    if not night_actions_queue:
+        return
+    
+    current_action_index += 1
+    
+    # Check if we have more actions
+    if current_action_index < len(night_actions_queue):
+        # Display next action
+        display_next_action()
+    else:
+        # No more actions, clear the center display
+        socketio.emit("center_display", {"active": False})
+        logger.info("No more actions to display")
+
+
+@socketio.on("continue_speaker_button")
+def handle_continue_speaker_button():
+    """Handle continue button click for speakers during day phase."""
+    global speakers_queue, current_speaker_index
+    
+    if not speakers_queue:
+        logger.info("No speakers in queue")
+        emit("center_display", {"active": False})
+        return
+
+    # Move to next speaker
+    current_speaker_index += 1
+
+    # Check if we've gone through all current speakers
+    if current_speaker_index < len(speakers_queue):
+        # Send next speaker
+        emit_speaker_prompt(speakers_queue[current_speaker_index])
+        emit_message(speakers_queue[current_speaker_index])
+    else:
+        logger.info("No more speakers in queue currently")
+        
+        # Check if we're in a discussion phase and if the phase is still running
+        if not game.game_controller.phase_completed:
+            # If the phase is still running, inform client that more speakers may be coming
+            logger.info("Phase still running, waiting for more messages")
+            # Reset current speaker index to the last one            
+            current_speaker_index -= 1  # Reset to last speaker
+            # Update center display to show waiting state
+            socketio.emit("center_display", {
+                "active": True,
+                "waiting": True,
+                "message": "Waiting for more messages...",
+            })
+        else:
+            # No more speakers and phase is complete
+            logger.info("No more speakers and phase is complete")
+            emit("next_speaker", {"speaker_id": None})
+            emit("center_display", {"active": False})
+
+
+@socketio.on("next_speaker")
+def handle_next_speaker():
+    """Handle next speaker request."""
+    # Forward to the specialized handler
+    handle_continue_speaker_button()
+
+
+@socketio.on("continue_action")
+def handle_continue_action():
+    """Handle continue action request."""
+    # Forward to the specialized handler
+    handle_continue_action_button()
+
+
+def display_next_action():
+    """Display the next action in the queue."""
+    global night_actions_queue, current_action_index
+    
+    if not night_actions_queue or current_action_index >= len(night_actions_queue):
+        return
+    
+    action = night_actions_queue[current_action_index]
+
+    # Log for debugging
+    logger.info(f"Displaying action: {action.action_type}")
+    
+    actor_name = game.game_state.players[action.actor_id].name
+    target_name = game.game_state.players[action.target_id].name
+    
+    socketio.emit("center_display", {
+        "active": True,
+        "is_action": True,
+        "action_type": action.action_type,
+        "actor": actor_name,
+        "target": target_name,
+    })
+    
+    logger.info(f"Displayed action {current_action_index + 1} of {len(night_actions_queue)}")
+
+
+def emit_action(action):
+    """Emit an action event to the action queue."""
+    global night_actions_queue, current_action_index, game
+    
+    # Get current phase
+    current_phase = game.game_state.current_phase.name.lower()
+    
+    try:
+        # Add to queue
+        night_actions_queue.append(action)
+        
+        logger.info(f"Added night action to queue: {action.action_type}")
+        
+        # If this is the first action and nothing is being displayed, show it
+        if len(night_actions_queue) == 1 and current_action_index == 0:
+            display_next_action()
+            
+    except Exception as e:
+        logger.error(f"Error in emit_action: {e}", exc_info=True)
 
 
 def execute_phase_in_background(sid):
@@ -219,46 +345,6 @@ def handle_message_callback(message):
                 emit_message(message)
     except Exception as e:
         logger.error(f"Error in message callback: {e}", exc_info=True)
-
-
-@socketio.on("next_speaker")
-def handle_next_speaker():
-    """Handle next speaker request."""
-    global speakers_queue, current_speaker_index, game
-
-    if not speakers_queue:
-        logger.info("No speakers in queue")
-        emit("center_display", {"active": False})
-        return
-
-    # Move to next speaker
-    current_speaker_index += 1
-
-    # Check if we've gone through all current speakers
-    if current_speaker_index < len(speakers_queue):
-        # Send next speaker
-        emit_speaker_prompt(speakers_queue[current_speaker_index])
-        emit_message(speakers_queue[current_speaker_index])
-    else:
-        logger.info("No more speakers in queue currently")
-        
-        # Check if we're in a discussion phase and if the phase is still running
-        if not game.game_controller.phase_completed:
-            # If the phase is still running, inform client that more speakers may be coming
-            logger.info("Phase still running, waiting for more messages")
-            # Reset current speaker index to the last one            
-            current_speaker_index -= 1  # Reset to last speaker
-            # Update center display to show waiting state
-            socketio.emit("center_display", {
-                "active": True,
-                "waiting": True,
-                "message": "Waiting for more messages...",
-            })
-        else:
-            # No more speakers and phase is complete
-            logger.info("No more speakers and phase is complete")
-            emit("next_speaker", {"speaker_id": None})
-            emit("center_display", {"active": False})
 
 
 @socketio.on("reset_game")
@@ -396,7 +482,7 @@ def emit_game_state():
     socketio.emit("game_state", state)
 
 
-def emit_event(event):
+def emit_game_event(event):
     """Emit a game event to all clients."""
     if event.event_type == "vote_result":
         socketio.emit(
@@ -410,7 +496,7 @@ def emit_event(event):
     if event.event_type == "vote":
         # handled in emit_vote
         return
-    
+         
     if event.event_type == "game_over":
         return emit_game_over()
 
@@ -424,6 +510,7 @@ def emit_event(event):
         },
     )
 
+
 def emit_vote(vote):
     """Emit a vote event to all clients."""
     socketio.emit(
@@ -435,6 +522,7 @@ def emit_vote(vote):
         },
     )
 
+
 def emit_vote_result(vote_result):
     """Emit vote result to all clients."""
     socketio.emit(
@@ -444,6 +532,7 @@ def emit_vote_result(vote_result):
             "timestamp": datetime.now().isoformat(),
         },
     )
+
 
 def emit_message(message):
     """Emit a chat message to all clients."""

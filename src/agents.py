@@ -288,15 +288,29 @@ class DebugAgent(BaseAgent):
     
     def generate_night_action(self, game_state: GameState) -> Optional[Action]:
         """Generate a debug night action."""
+        if self.player.role == PlayerRole.VILLAGER:
+            # Villagers have no night action
+            return None
+        
         # If no valid target found, choose randomly
         time.sleep(self.sleep_time)
         import random
         alive_players = [pid for pid in game_state.alive_players.keys() if pid != self.player.id]
         if alive_players:
             target_id = random.choice(alive_players)
+            
+            # Create the appropriate action based on role
+            action_type = ""
+            if self.player.role == PlayerRole.MAFIA or self.player.role == PlayerRole.GODFATHER:
+                action_type = "kill"
+            elif self.player.role == PlayerRole.DOCTOR:
+                action_type = "protect"
+            elif self.player.role == PlayerRole.DETECTIVE:
+                action_type = "investigate"
+            
             return Action(
                 actor_id=self.player.id,
-                action_type="debug_action",
+                action_type=action_type,
                 target_id=target_id,
                 round_num=game_state.current_round,
                 phase=GamePhase.NIGHT_ACTION
