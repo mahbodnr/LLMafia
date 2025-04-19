@@ -48,6 +48,7 @@ class GameController:
             "vote": [],
             # "elimination": [],
             "game_event": [],
+            "vote_result": [],
         }
 
     def initialize_game(self, player_names: List[str]) -> GameState:
@@ -240,16 +241,7 @@ class GameController:
             self.run_phase()
 
             # Check if game is over
-            if self.game_state.check_game_over():
-                winning_team = self.game_state.winning_team
-                winning_team_name = (
-                    "Village" if winning_team == TeamAlignment.VILLAGE else "Mafia"
-                )
-                self._add_game_event(
-                    event_type="game_over",
-                    description=f"Game over! The {winning_team_name} team has won!",
-                    public=True,
-                )
+            if self.check_game_over():
                 break
 
             # Move to the next phase
@@ -295,11 +287,14 @@ class GameController:
         next_index = (current_index + 1) % len(phase_order)
         next_phase = phase_order[next_index]
 
+        # In round 1, there is no voting and no night actions:
+        if self.game_state.current_round == 1:
+            if next_phase == GamePhase.DAY_VOTING:
+                next_phase = GamePhase.NIGHT_MAFIA_DISCUSSION
+            elif next_phase == GamePhase.NIGHT_ACTION:
+                next_phase = GamePhase.DAY_DISCUSSION
         # If we're moving from night to day, increment the round number
-        if (
-            current_phase == GamePhase.NIGHT_ACTION
-            and next_phase == GamePhase.DAY_DISCUSSION
-        ):
+        if next_phase == GamePhase.DAY_DISCUSSION:
             self.game_state.current_round += 1
             self._add_game_event(
                 event_type="new_round",
@@ -319,7 +314,21 @@ class GameController:
             public=True,
         )
 
-
+    def check_game_over(self):
+        """Check if the game is over and update the game state accordingly."""
+        if self.game_state.check_game_over():
+            winning_team = self.game_state.winning_team
+            winning_team_name = (
+                "Village" if winning_team == TeamAlignment.VILLAGE else "Mafia"
+            )
+            self._add_game_event(
+                event_type="game_over",
+                description=f"Game over! The {winning_team_name} team has won!",
+                public=True,
+            )
+            return True
+        return False
+    
 class PhaseController:
     """Base class for phase controllers."""
 
@@ -539,34 +548,60 @@ class DayVotingController(PhaseController):
 
         # Determine the player with the most votes
         if votes:
-            eliminated_id = max(votes.items(), key=lambda x: x[1])[0]
-            eliminated_player = self.game_state.players[eliminated_id]
+            # check if there is a tie
+            max_votes = max(votes.values())
+            tied_players = [
+                pid for pid, count in votes.items() if count == max_votes
+            ]
+            if len(tied_players) > 1:
+                eliminated_players = [
+                    self.game_state.players[pid].name for pid in tied_players
+                ]
 
-            # Eliminate the player
-            eliminated_player.status = PlayerStatus.DEAD
-
-            # Log elimination
-            logger.info(f"{eliminated_player.name} has been eliminated!")
-
-            # Add elimination as an event
-            if self.config.get("mechanics", {}).get("reveal_role_on_death", True):
                 self.game_controller._add_game_event(
-                    event_type="elimination",
-                    description=f"{eliminated_player.name} has been eliminated! They were a {eliminated_player.role.name}.",
+                    event_type="vote_result",
+                    description=f"{', '.join(eliminated_players)} are tied with {max_votes} votes each. No one is eliminated.",
                     public=True,
-                    targets=[eliminated_id],
                 )
+                
+                logger.info("No one was eliminated due to a tie!")                
 
-                # Update all players' known roles
-                for player in self.game_state.players.values():
-                    player.known_roles[eliminated_id] = eliminated_player.role
             else:
+                eliminated_id = max(votes.items(), key=lambda x: x[1])[0]
+                eliminated_player = self.game_state.players[eliminated_id]
+
+                # Eliminate the player
+                eliminated_player.status = PlayerStatus.DEAD
+
+                # Log elimination
+                logger.info(f"{eliminated_player.name} has been eliminated!")
+                
                 self.game_controller._add_game_event(
-                    event_type="elimination",
-                    description=f"{eliminated_player.name} has been eliminated!",
+                    event_type="vote_result",
+                    description=f"{eliminated_player.name} has been eliminated with {max_votes} votes!",
                     public=True,
                     targets=[eliminated_id],
                 )
+
+                # Add elimination as an event
+                if self.config.get("mechanics", {}).get("reveal_role_on_death", True):
+                    self.game_controller._add_game_event(
+                        event_type="elimination",
+                        description=f"{eliminated_player.name} has been eliminated! They were a {eliminated_player.role.name}.",
+                        public=True,
+                        targets=[eliminated_id],
+                    )
+
+                    # Update all players' known roles
+                    for player in self.game_state.players.values():
+                        player.known_roles[eliminated_id] = eliminated_player.role
+                else:
+                    self.game_controller._add_game_event(
+                        event_type="elimination",
+                        description=f"{eliminated_player.name} has been eliminated!",
+                        public=True,
+                        targets=[eliminated_id],
+                    )
 
 
 class NightMafiaDiscussionController(PhaseController):

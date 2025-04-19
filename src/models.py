@@ -81,7 +81,6 @@ class Vote:
     round_num: int
     phase: GamePhase
 
-
 @dataclass
 class Action:
     """Class representing an action taken by a player."""

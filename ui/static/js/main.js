@@ -14,7 +14,8 @@ let gameState = {
     events: [],
     currentSpeaker: null,
     waitingForContinue: false,
-    waitingForMessages: false
+    waitingForMessages: false,
+    voteResult: null
 };
 
 // DOM Elements
@@ -170,12 +171,22 @@ function initializeSocket() {
             nextPhaseButton.disabled = false;
         }
     });
+
+    socket.on('vote_result', (result) => {
+        console.log("Received vote result:", result);
+        gameState.voteResult = result;
+        showVoteResult(result);
+    });
 }
 
 // Set up event listeners for UI elements
 function setupEventListeners() {
     startGameButton.addEventListener('click', startGame);
-    nextPhaseButton.addEventListener('click', nextPhase);
+    nextPhaseButton.addEventListener('click', () => {
+        nextPhase();
+        // Hide vote result when moving to next phase
+        hideVoteResult();
+    });
     resetGameButton.addEventListener('click', resetGame);
     downloadTranscriptButton.addEventListener('click', downloadTranscript);
     newGameButton.addEventListener('click', () => {
@@ -253,6 +264,8 @@ function startGame() {
 function nextPhase() {
     console.log("Moving to next phase");
     socket.emit('next_phase');
+    // Hide any vote result display
+    hideVoteResult();
 }
 
 // Reset the game
@@ -284,7 +297,8 @@ function resetGame() {
         events: [],
         currentSpeaker: null,
         waitingForContinue: false,
-        waitingForMessages: false
+        waitingForMessages: false,
+        voteResult: null
     };
     
     // Reset UI elements
@@ -297,6 +311,9 @@ function resetGame() {
     currentSpeakerName.textContent = 'None';
     currentSpeakerMessage.textContent = 'Waiting for the game to start...';
     continueButton.disabled = true;
+    
+    // Hide vote result if visible
+    hideVoteResult();
     
     addLogEntry('Game reset', 'info');
 }
@@ -1000,6 +1017,77 @@ function addLogEntry(message, type = 'info') {
     
     // Scroll to bottom
     gameLog.scrollTop = gameLog.scrollHeight;
+}
+
+// Show vote result on screen
+function showVoteResult(result) {
+    // Hide any existing vote result first
+    hideVoteResult();
+    
+    // Create vote result container if it doesn't exist
+    let voteResultContainer = document.getElementById('vote-result-container');
+    if (!voteResultContainer) {
+        voteResultContainer = document.createElement('div');
+        voteResultContainer.id = 'vote-result-container';
+        voteResultContainer.className = 'vote-result-overlay';
+        document.body.appendChild(voteResultContainer);
+    }
+    
+    // Create vote result content
+    const voteResultContent = document.createElement('div');
+    voteResultContent.className = 'vote-result-content animate__animated animate__fadeIn';
+    voteResultContent.innerHTML = `
+        <div class="vote-result-header">
+            <h3>Vote Result</h3>
+            <button type="button" class="btn-close" aria-label="Close"></button>
+        </div>
+        <div class="vote-result-body">
+            ${result.context}
+        </div>
+    `;
+    
+    // Add close button functionality
+    const closeButton = voteResultContent.querySelector('.btn-close');
+    closeButton.addEventListener('click', hideVoteResult);
+    
+    // Add to container
+    voteResultContainer.appendChild(voteResultContent);
+    
+    // Show container
+    voteResultContainer.style.display = 'flex';
+    
+    // Add to game log
+    addLogEntry(`Vote Result: ${result.context}`, 'warning');
+    
+    // Auto-hide after 10 seconds
+    setTimeout(() => {
+        if (document.getElementById('vote-result-container')) {
+            hideVoteResult();
+        }
+    }, 10000);
+}
+
+// Hide vote result
+function hideVoteResult() {
+    const voteResultContainer = document.getElementById('vote-result-container');
+    if (voteResultContainer) {
+        // Animate before removing
+        const voteResultContent = voteResultContainer.querySelector('.vote-result-content');
+        if (voteResultContent) {
+            voteResultContent.classList.remove('animate__fadeIn');
+            voteResultContent.classList.add('animate__fadeOut');
+            
+            // Remove after animation completes
+            setTimeout(() => {
+                if (voteResultContainer.parentNode) {
+                    voteResultContainer.parentNode.removeChild(voteResultContainer);
+                }
+            }, 500);
+        } else {
+            // No animation element, remove immediately
+            voteResultContainer.parentNode.removeChild(voteResultContainer);
+        }
+    }
 }
 
 // Show game results

@@ -242,7 +242,7 @@ Respond with either "agree" or "disagree" and a very brief explanation of your r
 
 class DebugAgent(BaseAgent):
     """Debug agent for testing purposes."""
-    def __init__(self, player: Player, config: Dict[str, Any], sleep_time: Optional[float] = 1.0):
+    def __init__(self, player: Player, config: Dict[str, Any], sleep_time: Optional[float] = 0.0):
         """
         Initialize the debug agent.
         
@@ -463,7 +463,7 @@ Your response should clearly indicate which player you're voting for by name.
         """Create a prompt for mafia discussion during the night phase."""
         prompt = f"""You are playing a Mafia/Werewolf game as a {self.player.role.name}.
 
-Mafia team members are: {', '.join([p.name for p in game_state.mafia_team])}.
+Mafia team members are: {', '.join([name for name, p in game_state.players.items() if p.team == PlayerRole.MAFIA])}.
 
 {self.format_game_state_for_prompt(game_state)}
 

@@ -1,0 +1,88 @@
+.vote-result-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+
+.vote-result-content {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    width: 90%;
+    max-width: 500px;
+    padding: 0;
+    overflow: hidden;
+}
+
+body.night-mode .vote-result-content {
+    background-color: #222;
+    color: #eee;
+    border: 1px solid #555;
+}
+
+.vote-result-header {
+    background-color: #dc3545;
+    color: white;
+    padding: 10px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.vote-result-header h3 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.vote-result-header .btn-close {
+    background-color: transparent;
+    color: white;
+}
+
+.vote-result-body {
+    padding: 20px;
+    font-size: 1.2rem;
+    text-align: center;
+}
+
+/* Animation classes */
+.animate__animated {
+    animation-duration: 0.5s;
+}
+
+.animate__fadeIn {
+    animation-name: fadeIn;
+}
+
+.animate__fadeOut {
+    animation-name: fadeOut;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+}

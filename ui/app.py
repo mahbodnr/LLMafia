@@ -119,8 +119,8 @@ def handle_start_game(settings):
 
     # Register event handlers
     game.game_controller.register_callback("game_event", emit_event)
-    game.game_controller.register_callback("vote", emit_vote)
     game.game_controller.register_callback("message", handle_message_callback)  # Register message callback
+    game.game_controller.register_callback("vote", emit_vote)
 
     # Send initial game state
     emit_game_state()
@@ -178,13 +178,14 @@ def execute_phase_in_background(sid):
     
     logger.info("Executing phase in background")
     
+    # Check if game is over
+    if game.game_controller.check_game_over():
+        return
+        
     try:
         # Run the current phase - will trigger message callbacks
         phase_result = game.game_controller.run_phase()
         
-        # Check if game is over
-        if game.game_state.game_over:
-            emit_game_over()
         
         # Advance to next phase
         game.game_controller.advance_phase()        
@@ -272,12 +273,13 @@ def handle_reset_game():
 
 
 @socketio.on("get_transcript")
-def handle_get_transcript(callback):
+def handle_get_transcript(callback=None):
     """Handle get transcript request."""
     global game
 
     if not game:
-        callback({})
+        if callback:
+            callback({})
         return
 
     # Save transcript
@@ -288,7 +290,8 @@ def handle_get_transcript(callback):
         transcript = json.load(f)
 
     # Return transcript
-    callback(transcript)
+    if callback:
+        callback(transcript)
 
 
 @socketio.on("player_reaction")
@@ -395,6 +398,22 @@ def emit_game_state():
 
 def emit_event(event):
     """Emit a game event to all clients."""
+    if event.event_type == "vote_result":
+        socketio.emit(
+            "vote_result",
+            {
+                "context": event.description,
+                "timestamp": datetime.now().isoformat(),
+            },
+        )      
+  
+    if event.event_type == "vote":
+        # handled in emit_vote
+        return
+    
+    if event.event_type == "game_over":
+        return emit_game_over()
+
     socketio.emit(
         "game_event",
         {
@@ -412,6 +431,16 @@ def emit_vote(vote):
         {
             "voter_id": vote.voter_id,
             "target_id": vote.target_id,
+            "timestamp": datetime.now().isoformat(),
+        },
+    )
+
+def emit_vote_result(vote_result):
+    """Emit vote result to all clients."""
+    socketio.emit(
+        "vote_result",
+        {
+            "context": vote_result.context,
             "timestamp": datetime.now().isoformat(),
         },
     )
