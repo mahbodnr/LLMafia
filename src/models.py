@@ -110,7 +110,7 @@ class GameState:
     """Class representing the current state of the game."""
     players: Dict[str, Player]
     current_round: int = 1
-    current_phase: GamePhase = GamePhase.DAY_DISCUSSION
+    current_phase: GamePhase = field(default_factory=lambda: GamePhase(GamePhase.DAY_DISCUSSION))
     events: List[GameEvent] = field(default_factory=list)
     votes: List[Vote] = field(default_factory=list)
     actions: List[Action] = field(default_factory=list)

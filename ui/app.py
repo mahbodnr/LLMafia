@@ -149,6 +149,9 @@ def handle_next_phase():
 
     logger.info("Moving to next phase")
     
+    # update game state
+    emit_game_state()
+    
     # Reset for new phase
     phase_messages = []
     speakers_queue = []
@@ -163,9 +166,7 @@ def handle_next_phase():
         execute_phase_in_background(current_sid)
     
     socketio.start_background_task(run_phase_with_context)
-    
-    # Update game state immediately
-    emit_game_state()
+
 
 
 def execute_phase_in_background(sid):
@@ -186,10 +187,7 @@ def execute_phase_in_background(sid):
             emit_game_over()
         
         # Advance to next phase
-        game.game_controller.advance_phase()
-        
-        # Send updated game state
-        emit_game_state()
+        game.game_controller.advance_phase()        
         
         logger.info("Background phase execution completed")
         
@@ -225,7 +223,7 @@ def handle_message_callback(message):
 @socketio.on("next_speaker")
 def handle_next_speaker():
     """Handle next speaker request."""
-    global speakers_queue, current_speaker_index
+    global speakers_queue, current_speaker_index, game
 
     if not speakers_queue:
         logger.info("No speakers in queue")
@@ -235,34 +233,31 @@ def handle_next_speaker():
     # Move to next speaker
     current_speaker_index += 1
 
-    # Check if we've gone through all speakers
+    # Check if we've gone through all current speakers
     if current_speaker_index < len(speakers_queue):
         # Send next speaker
         emit_speaker_prompt(speakers_queue[current_speaker_index])
         emit_message(speakers_queue[current_speaker_index])
     else:
-        logger.info("No more speakers in queue")
-        # No more speakers
-        emit("next_speaker", {"speaker_id": None})
-        emit("center_display", {"active": False})
+        logger.info("No more speakers in queue currently")
         
-        # If the phase is still running, inform client that more speakers may be coming
-        # if not game.game_state.current_phase.complete:
-        #     emit("waiting_for_messages", {"active": True})
-
-
-@socketio.on("check_new_messages")
-def handle_check_new_messages():
-    """Check if new messages are available for the current phase."""
-    global speakers_queue, current_speaker_index
-    
-    if current_speaker_index < len(speakers_queue) - 1:
-        current_speaker_index += 1
-        emit_speaker_prompt(speakers_queue[current_speaker_index])
-        emit_message(speakers_queue[current_speaker_index])
-        return True
-    
-    return False
+        # Check if we're in a discussion phase and if the phase is still running
+        if not game.game_controller.phase_completed:
+            # If the phase is still running, inform client that more speakers may be coming
+            logger.info("Phase still running, waiting for more messages")
+            # Reset current speaker index to the last one            
+            current_speaker_index -= 1  # Reset to last speaker
+            # Update center display to show waiting state
+            socketio.emit("center_display", {
+                "active": True,
+                "waiting": True,
+                "message": "Waiting for more messages...",
+            })
+        else:
+            # No more speakers and phase is complete
+            logger.info("No more speakers and phase is complete")
+            emit("next_speaker", {"speaker_id": None})
+            emit("center_display", {"active": False})
 
 
 @socketio.on("reset_game")

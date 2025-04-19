@@ -5,6 +5,7 @@ Agent interface and implementations for the Mafia game.
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any, Tuple
 import json
+import time
 
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
@@ -241,6 +242,17 @@ Respond with either "agree" or "disagree" and a very brief explanation of your r
 
 class DebugAgent(BaseAgent):
     """Debug agent for testing purposes."""
+    def __init__(self, player: Player, config: Dict[str, Any], sleep_time: Optional[float] = 1.0):
+        """
+        Initialize the debug agent.
+        
+        Args:
+            player: The player this agent controls
+            config: Configuration settings for the agent
+            sleep_time: Time to sleep before generating a response (for testing)
+        """
+        super().__init__(player, config)
+        self.sleep_time = sleep_time
 
     def initialize_llm(self):
         """Initialize the language model (no-op for debug agent)."""
@@ -249,21 +261,25 @@ class DebugAgent(BaseAgent):
 
     def generate_response(self, prompt: str) -> str:
         """Generate a response (echo the prompt for debug agent)."""
+        time.sleep(self.sleep_time)
         return f"Debug agent response to prompt: >>{prompt}<<"
     
     def generate_day_discussion(self, game_state: GameState) -> str:
         """Generate a debug discussion message."""
+        time.sleep(self.sleep_time)
         prompt = self._create_day_discussion_prompt(game_state)
         return f"Debug agent discussion: >>{prompt}<<"
 
     def generate_mafia_discussion(self, game_state: GameState) -> str:
         """Generate a debug discussion message."""
+        time.sleep(self.sleep_time)
         prompt = self._create_day_discussion_prompt(game_state)
         return f"Debug agent discussion: >>{prompt}<<"
      
     def generate_day_vote(self, game_state: GameState) -> str:
         """Generate a debug vote."""
         # If no valid player found, return a random alive player that isn't self
+        time.sleep(self.sleep_time)
         import random
         alive_players = [pid for pid in game_state.alive_players.keys() if pid != self.player.id]
         if alive_players:
@@ -273,6 +289,7 @@ class DebugAgent(BaseAgent):
     def generate_night_action(self, game_state: GameState) -> Optional[Action]:
         """Generate a debug night action."""
         # If no valid target found, choose randomly
+        time.sleep(self.sleep_time)
         import random
         alive_players = [pid for pid in game_state.alive_players.keys() if pid != self.player.id]
         if alive_players:
@@ -288,6 +305,7 @@ class DebugAgent(BaseAgent):
 
     def _create_day_discussion_prompt(self, game_state: GameState) -> str:
         """Create a debug prompt for day discussion."""
+        time.sleep(self.sleep_time)
         return "Debug agent discussion prompt."
 
 

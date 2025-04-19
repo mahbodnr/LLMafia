@@ -103,6 +103,12 @@ function initializeSocket() {
         showGameResults(result);
     });
 
+    socket.on('vote', (vote) => {
+        console.log("Received vote:", vote);
+        drawVoteArrow(vote.voter_id, vote.target_id);
+        addLogEntry(`${getPlayerNameById(vote.voter_id)} voted for ${getPlayerNameById(vote.target_id)}`, 'warning');
+    });
+
     socket.on('next_speaker', (data) => {
         console.log("Received next speaker:", data);
         if (data.speaker_id) {
@@ -794,6 +800,124 @@ function checkForNewMessages() {
         }
         // If there are new messages, they'll be handled by the next_speaker and center_display events
     });
+}
+
+// Get player name by ID helper function
+function getPlayerNameById(playerId) {
+    const player = gameState.players.find(p => p.id === playerId);
+    return player ? player.name : 'Unknown Player';
+}
+
+// Draw vote arrow between two players
+function drawVoteArrow(voterId, targetId) {
+    // Clear any existing arrow from this voter first
+    clearVoteArrow(voterId);
+    
+    // Find player elements
+    const voterElement = document.querySelector(`.player-avatar[data-player-id="${voterId}"]`);
+    const targetElement = document.querySelector(`.player-avatar[data-player-id="${targetId}"]`);
+    
+    if (!voterElement || !targetElement) {
+        console.error("Could not find player elements for vote arrow");
+        return;
+    }
+    
+    // Get positions of the player elements
+    const voterRect = voterElement.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
+    
+    // Calculate center points
+    const voterX = voterRect.left + voterRect.width / 2;
+    const voterY = voterRect.top + voterRect.height / 2;
+    const targetX = targetRect.left + targetRect.width / 2;
+    const targetY = targetRect.top + targetRect.height / 2;
+    
+    // Create SVG arrow
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "vote-arrow");
+    svg.setAttribute("data-voter-id", voterId);
+    svg.style.position = "absolute";
+    svg.style.top = "0";
+    svg.style.left = "0";
+    svg.style.width = "100%";
+    svg.style.height = "100%";
+    svg.style.pointerEvents = "none";
+    svg.style.zIndex = "1000";
+    
+    // Calculate container-relative positions
+    const container = document.getElementById('players-container');
+    const containerRect = container.getBoundingClientRect();
+    
+    const relVoterX = voterX - containerRect.left;
+    const relVoterY = voterY - containerRect.top;
+    const relTargetX = targetX - containerRect.left;
+    const relTargetY = targetY - containerRect.top;
+    
+    // Calculate arrow direction and position
+    const dx = relTargetX - relVoterX;
+    const dy = relTargetY - relVoterY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Adjust start and end points to be outside player avatars
+    const playerRadius = voterRect.width / 2;
+    const startX = relVoterX + (dx / distance) * playerRadius;
+    const startY = relVoterY + (dy / distance) * playerRadius;
+    const endX = relTargetX - (dx / distance) * playerRadius;
+    const endY = relTargetY - (dy / distance) * playerRadius;
+    
+    // Create arrow line
+    const arrow = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    arrow.setAttribute("x1", startX);
+    arrow.setAttribute("y1", startY);
+    arrow.setAttribute("x2", endX);
+    arrow.setAttribute("y2", endY);
+    arrow.setAttribute("stroke", "#ff4d4d");
+    arrow.setAttribute("stroke-width", "3");
+    arrow.setAttribute("marker-end", "url(#arrowhead)");
+    
+    // Create arrowhead marker definition
+    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    marker.setAttribute("id", "arrowhead");
+    marker.setAttribute("markerWidth", "10");
+    marker.setAttribute("markerHeight", "7");
+    marker.setAttribute("refX", "0");
+    marker.setAttribute("refY", "3.5");
+    marker.setAttribute("orient", "auto");
+    
+    const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    polygon.setAttribute("points", "0 0, 10 3.5, 0 7");
+    polygon.setAttribute("fill", "#ff4d4d");
+    
+    marker.appendChild(polygon);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+    svg.appendChild(arrow);
+    
+    // Add the arrow to the players container
+    container.appendChild(svg);
+    
+    // Add a pulse effect
+    svg.animate([
+        { opacity: 0.5 },
+        { opacity: 1 },
+        { opacity: 0.5 }
+    ], {
+        duration: 2000,
+        iterations: Infinity
+    });
+}
+
+// Clear vote arrow from a specific voter
+function clearVoteArrow(voterId) {
+    const arrows = document.querySelectorAll(`.vote-arrow[data-voter-id="${voterId}"]`);
+    arrows.forEach(arrow => arrow.remove());
+}
+
+// Clear all vote arrows
+function clearAllVoteArrows() {
+    const arrows = document.querySelectorAll('.vote-arrow');
+    arrows.forEach(arrow => arrow.remove());
 }
 
 // Add log entry

@@ -168,6 +168,9 @@ class GameController:
             # Create agent
             self.agents[player_id] = create_agent(player, provider, combined_config)
 
+
+        self.phase_completed = False
+
     def register_callback(self, event_type: str, callback):
         """
         Register a callback for a specific event type.
@@ -252,6 +255,8 @@ class GameController:
             # Move to the next phase
             self.advance_phase()
 
+            self.phase_completed = False
+
         return self.game_state.game_over, self.game_state.winning_team
 
     def run_phase(self):
@@ -267,6 +272,9 @@ class GameController:
 
         # update agent memories
         controller._update_agent_memories()
+        
+        # Mark phase as completed
+        self.phase_completed = True
     
     def advance_phase(self):
         """Advance to the next game phase."""
@@ -327,7 +335,7 @@ class PhaseController:
     def run(self):
         """Run this phase."""
         raise NotImplementedError("Subclasses must implement run()")
-
+        
     def _update_agent_memories(self):
         """Update all agents' memories with the current game state."""
         for agent in self.agents.values():
@@ -631,7 +639,7 @@ class NightMafiaDiscussionController(PhaseController):
 
             # Emit message event
             self.emit_event("message", message)
-            
+
             # Log message
             logger.info(f"[MAFIA] {player.name} says: {message_content}")
 
