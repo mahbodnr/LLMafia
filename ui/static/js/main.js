@@ -836,6 +836,7 @@ function drawVoteArrow(voterId, targetId) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("class", "vote-arrow");
     svg.setAttribute("data-voter-id", voterId);
+    svg.setAttribute("data-target-id", targetId);
     svg.style.position = "absolute";
     svg.style.top = "0";
     svg.style.left = "0";
@@ -859,21 +860,35 @@ function drawVoteArrow(voterId, targetId) {
     const distance = Math.sqrt(dx * dx + dy * dy);
     
     // Adjust start and end points to be outside player avatars
-    const playerRadius = voterRect.width / 2;
-    const startX = relVoterX + (dx / distance) * playerRadius;
-    const startY = relVoterY + (dy / distance) * playerRadius;
-    const endX = relTargetX - (dx / distance) * playerRadius;
-    const endY = relTargetY - (dy / distance) * playerRadius;
+    // Increase playerRadius to make arrows shorter
+    const playerRadius = voterRect.width / 1.8;
+    const startX = relVoterX + (dx / distance) * (playerRadius * 0.8);
+    const startY = relVoterY + (dy / distance) * (playerRadius * 0.8);
+    
+    // Check if there's an opposite arrow (bi-directional voting)
+    const hasOppositeArrow = document.querySelector(`.vote-arrow[data-voter-id="${targetId}"][data-target-id="${voterId}"]`);
+    
+    // Apply offset if there's an opposite arrow to prevent overlap
+    let offsetFactor = hasOppositeArrow ? 0.15 : 0;
+    
+    // Calculate perpendicular vector for offset
+    const perpX = -dy / distance;
+    const perpY = dx / distance;
+    
+    // Apply offset to end point
+    const endX = relTargetX - (dx / distance) * (playerRadius * 1.2) + (perpX * playerRadius * offsetFactor);
+    const endY = relTargetY - (dy / distance) * (playerRadius * 1.2) + (perpY * playerRadius * offsetFactor);
     
     // Create arrow line
     const arrow = document.createElementNS("http://www.w3.org/2000/svg", "line");
     arrow.setAttribute("x1", startX);
     arrow.setAttribute("y1", startY);
-    arrow.setAttribute("x2", endX);
-    arrow.setAttribute("y2", endY);
+    arrow.setAttribute("x2", startX); // Start with zero length
+    arrow.setAttribute("y2", startY);
     arrow.setAttribute("stroke", "#ff4d4d");
     arrow.setAttribute("stroke-width", "3");
     arrow.setAttribute("marker-end", "url(#arrowhead)");
+    arrow.setAttribute("filter", "drop-shadow(0px 0px 2px rgba(255, 77, 77, 0.7))");
     
     // Create arrowhead marker definition
     const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
@@ -897,15 +912,66 @@ function drawVoteArrow(voterId, targetId) {
     // Add the arrow to the players container
     container.appendChild(svg);
     
-    // Add a pulse effect
-    svg.animate([
-        { opacity: 0.5 },
-        { opacity: 1 },
-        { opacity: 0.5 }
-    ], {
-        duration: 2000,
-        iterations: Infinity
-    });
+    // Add text element to show vote count (for multiple votes)
+    const voteCount = countVotesForTarget(targetId);
+    if (voteCount > 1) {
+        const textElement = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        textElement.setAttribute("x", endX + perpX * 10);
+        textElement.setAttribute("y", endY + perpY * 10);
+        textElement.setAttribute("fill", "#ff4d4d");
+        textElement.setAttribute("font-size", "12");
+        textElement.setAttribute("font-weight", "bold");
+        textElement.setAttribute("text-anchor", "middle");
+        textElement.textContent = voteCount;
+        svg.appendChild(textElement);
+    }
+    
+    // Animate the arrow drawing
+    animateArrow(arrow, startX, startY, endX, endY);
+}
+
+// Animate arrow drawing from start to end
+function animateArrow(arrow, startX, startY, endX, endY) {
+    // Duration of animation in milliseconds
+    const duration = 500;
+    const startTime = performance.now();
+    
+    // Animation function
+    function animate(currentTime) {
+        const elapsedTime = currentTime - startTime;
+        const progress = Math.min(elapsedTime / duration, 1);
+        
+        // Linear interpolation between start and end points
+        const currentX = startX + (endX - startX) * progress;
+        const currentY = startY + (endY - startY) * progress;
+        
+        // Update arrow end point
+        arrow.setAttribute("x2", currentX);
+        arrow.setAttribute("y2", currentY);
+        
+        // Continue animation if not complete
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            // Add a pulse effect after animation completes
+            arrow.animate([
+                { opacity: 0.5, strokeWidth: "2px" },
+                { opacity: 1, strokeWidth: "3px" },
+                { opacity: 0.5, strokeWidth: "2px" }
+            ], {
+                duration: 2000,
+                iterations: Infinity
+            });
+        }
+    }
+    
+    // Start the animation
+    requestAnimationFrame(animate);
+}
+
+// Count how many votes a target has received
+function countVotesForTarget(targetId) {
+    return document.querySelectorAll(`.vote-arrow[data-target-id="${targetId}"]`).length;
 }
 
 // Clear vote arrow from a specific voter
