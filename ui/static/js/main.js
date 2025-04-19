@@ -141,14 +141,70 @@ function initializeSocket() {
             if (data.is_action) {
                 // This is a night action
                 const centerContent = centerDisplay.querySelector('.center-content');
+                
+                // Set specific styles based on action type
+                let actionIcon, actionColor, actionBackground, actionTitle, actionDescription;
+                
+                switch(data.action_type) {
+                    case "kill":
+                        actionIcon = "fa-skull";
+                        actionColor = "#dc3545"; // Red
+                        actionBackground = "rgba(220, 53, 69, 0.1)";
+                        actionTitle = "KILL";
+                        actionDescription = `is targeting`;
+                        break;
+                    case "protect":
+                        actionIcon = "fa-shield-alt";
+                        actionColor = "#28a745"; // Green
+                        actionBackground = "rgba(40, 167, 69, 0.1)";
+                        actionTitle = "PROTECT";
+                        actionDescription = `is protecting`;
+                        break;
+                    case "investigate":
+                        actionIcon = "fa-search";
+                        actionColor = "#17a2b8"; // Info blue
+                        actionBackground = "rgba(23, 162, 184, 0.1)";
+                        actionTitle = "INVESTIGATE";
+                        actionDescription = `is investigating`;
+                        break;
+                    default:
+                        actionIcon = "fa-cogs";
+                        actionColor = "#6c757d"; // Gray
+                        actionBackground = "rgba(108, 117, 125, 0.1)";
+                        actionTitle = data.action_type.replace(/_/g, ' ').toUpperCase();
+                        actionDescription = `is performing an action on`;
+                }
+                
                 centerContent.innerHTML = `
-                    <h4>${data.action_type.replace(/_/g, ' ').toUpperCase()}</h4>
-                    <div class="speaker-message">
-                        <p><strong>${data.actor}</strong> ${data.description}</p>
-                        <p>Target: <strong>${data.target}</strong></p>
-                    </div>
-                    <div class="text-center mt-3">
-                        <button id="continue-action-button" class="btn btn-primary">Continue</button>
+                    <div class="action-display" style="border-left: 5px solid ${actionColor}; background-color: ${actionBackground}; padding: 20px; border-radius: 5px;">
+                        <h4 style="color: ${actionColor}; display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                            <i class="fas ${actionIcon}"></i> ${actionTitle}
+                        </h4>
+                        <div class="action-content">
+                            <div class="actor-target-container" style="display: flex; justify-content: space-between; align-items: center;">
+                                <div class="actor" style="text-align: center; flex: 1;">
+                                    <div class="avatar" style="height: 80px; width: 80px; background-color: ${actionColor}; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center;">
+                                        <i class="fas fa-user" style="font-size: 40px; color: white;"></i>
+                                    </div>
+                                    <p style="font-weight: bold; font-size: 1.2rem;">${data.actor}</p>
+                                </div>
+                                
+                                <div class="action-arrow" style="flex: 0 0 60px; text-align: center;">
+                                    <i class="fas fa-long-arrow-alt-right" style="font-size: 30px; color: ${actionColor};"></i>
+                                    <p style="margin-top: 5px; font-size: 0.9rem;">${actionDescription}</p>
+                                </div>
+                                
+                                <div class="target" style="text-align: center; flex: 1;">
+                                    <div class="avatar" style="height: 80px; width: 80px; background-color: #6c757d; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center;">
+                                        <i class="fas fa-user" style="font-size: 40px; color: white;"></i>
+                                    </div>
+                                    <p style="font-weight: bold; font-size: 1.2rem;">${data.target}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-center mt-4">
+                            <button id="continue-action-button" class="btn" style="background-color: ${actionColor}; color: white;">Continue</button>
+                        </div>
                     </div>
                 `;
                 
