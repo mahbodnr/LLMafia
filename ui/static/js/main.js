@@ -59,6 +59,7 @@ const memoryPlayerName = document.getElementById('memory-player-name');
 const memoryPlayerRole = document.getElementById('memory-player-role');
 const memoryPlayerTeam = document.getElementById('memory-player-team');
 const memoryPlayerStatus = document.getElementById('memory-player-status');
+const memoryPlayerModel = document.getElementById('memory-player-model');
 const memoryLoading = document.getElementById('memory-loading');
 const memoryContent = document.getElementById('memory-content');
 
@@ -396,6 +397,17 @@ function resetGame() {
     // Hide vote result if visible
     hideVoteResult();
     
+    // Reset to day mode styling
+    const body = document.body;
+    body.classList.remove('night-mode', 'day-to-night');
+    body.classList.add('day-mode');
+    
+    // Remove night mode class from center display
+    centerDisplay.classList.remove('night-mode');
+    
+    // Restore any hidden elements
+    restoreVisibilityForDay();
+    
     addLogEntry('Game reset', 'info');
 }
 
@@ -505,6 +517,10 @@ function showPlayerDetails(player) {
     memoryPlayerStatus.textContent = player.status;
     memoryPlayerStatus.className = `badge rounded-pill bg-${player.status === 'Alive' ? 'success' : 'danger'}`;
     
+    // Display AI model name if available
+    memoryPlayerModel.textContent = player.model_name || 'Unknown';
+    memoryPlayerModel.className = 'badge rounded-pill bg-info';
+    
     // Show loading indicator
     memoryLoading.style.display = 'block';
     memoryContent.innerHTML = '';
@@ -540,6 +556,12 @@ function getRoleBadgeColor(role) {
 function displayPlayerMemory(data) {
     // Hide loading indicator
     memoryLoading.style.display = 'none';
+    
+    // Update the model name badge if available
+    if (data.model_name) {
+        memoryPlayerModel.textContent = data.model_name;
+        memoryPlayerModel.className = 'badge rounded-pill bg-info';
+    }
     
     // If no memory entries, show a message
     if (!data.memory || data.memory.length === 0) {
@@ -1221,6 +1243,17 @@ function showGameResults(result) {
     totalRoundsElement.textContent = result.total_rounds;
     totalMessagesElement.textContent = result.total_messages;
     totalVotesElement.textContent = result.total_votes;
+    
+    // Reset to day mode styling for the entire UI
+    const body = document.body;
+    body.classList.remove('night-mode', 'day-to-night');
+    body.classList.add('day-mode');
+    
+    // Remove night mode class from center display
+    centerDisplay.classList.remove('night-mode');
+    
+    // Restore any hidden elements
+    restoreVisibilityForDay();
     
     // Show modal
     gameResultsModal.show();

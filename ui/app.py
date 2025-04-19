@@ -95,7 +95,7 @@ def handle_start_game(settings):
                 "voting_time": 1,
             },
             "night": {
-                "mafia_discussion_rounds": 1,
+                "mafia_discussion_rounds": settings["discussionRounds"],
                 "action_time": 1,
             },
         },
@@ -350,11 +350,17 @@ def handle_message_callback(message):
 @socketio.on("reset_game")
 def handle_reset_game():
     """Handle reset game request."""
-    global game, speakers_queue, current_speaker_index
+    global game, speakers_queue, current_speaker_index, night_actions_queue, current_action_index
 
     game = None
     speakers_queue = []
     current_speaker_index = 0
+    night_actions_queue = []
+    current_action_index = 0
+    
+    # Clear any active message displays
+    socketio.emit("center_display", {"active": False})
+    
     logger.info("Game reset")
 
 
@@ -430,6 +436,10 @@ def handle_get_player_memory(player_id):
                 
             memory_entries.append(memory_item)
     
+    # Get agent's model name
+    agent = game.game_controller.agents[player_id]
+    model_name = getattr(agent, 'model_name', 'Unknown')
+    
     # Send player memory back to client
     emit("player_memory", {
         "player_id": player_id,
@@ -437,10 +447,9 @@ def handle_get_player_memory(player_id):
         "role": player.role.name.capitalize(),
         "team": player.team.name.capitalize(),
         "is_alive": player.is_alive,
+        "model_name": model_name,
         "memory": memory_entries
     })
-
-    agent = game.game_controller.agents[player_id]
 
 
 def emit_game_state():
@@ -583,7 +592,7 @@ def emit_speaker_prompt(message):
 
 def emit_game_over():
     """Emit game over event to all clients."""
-    global game
+    global game, speakers_queue, current_speaker_index, night_actions_queue, current_action_index
 
     if not game or not game.game_state.game_over:
         return
@@ -614,6 +623,15 @@ def emit_game_over():
         "total_messages": len(game.game_state.messages),
         "total_votes": len(game.game_state.votes),
     }
+    
+    # Clear all message displays
+    socketio.emit("center_display", {"active": False})
+    
+    # Reset message tracking variables
+    speakers_queue = []
+    current_speaker_index = 0
+    night_actions_queue = []
+    current_action_index = 0
 
     # Emit game over event
     socketio.emit("game_over", result)

@@ -182,3 +182,7 @@ class GameState:
         """Get all messages visible to a specific player."""
         return [msg for msg in self.messages 
                 if msg.public or player_id in msg.recipients or msg.sender_id == player_id]
+
+    def reverse_players_order(self):
+        """Reverse the order of players in the game."""
+        self.players = {pid: player for pid, player in reversed(list(self.players.items()))}

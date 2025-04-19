@@ -150,10 +150,10 @@ class GameController:
         llm_providers = self.config.get(
             "llm_providers",
             {
-                # "openai": {"model": "gpt-4o-mini"},
-                "debug": {"model": "debug"},
-                # "anthropic": {"model": "claude-3-7-sonnet-latest"},
-                # "google": {"model": "gemini-2.0-flash-lite"},
+                "openai": {"model": "gpt-4o-mini"},
+                # "debug": {"model": "debug"},
+                "anthropic": {"model": "claude-3-7-sonnet-latest"},
+                "google": {"model": "gemini-2.0-flash-lite"},
             },
         )
 
@@ -289,11 +289,16 @@ class GameController:
         next_phase = phase_order[next_index]
 
         # In round 1, there is no voting and no night actions:
-        # if self.game_state.current_round == 1:
-        #     if next_phase == GamePhase.DAY_VOTING:
-        #         next_phase = GamePhase.NIGHT_MAFIA_DISCUSSION
-        #     elif next_phase == GamePhase.NIGHT_ACTION:
-        #         next_phase = GamePhase.DAY_DISCUSSION
+        if self.game_state.current_round == 1:
+            if next_phase == GamePhase.DAY_VOTING:
+                next_phase = GamePhase.NIGHT_MAFIA_DISCUSSION
+            elif next_phase == GamePhase.NIGHT_ACTION:
+                next_phase = GamePhase.DAY_DISCUSSION
+                
+        # reverse the order of the alive players for the next phase
+        if self.game_state.current_round > 1 and next_phase == GamePhase.DAY_DISCUSSION:
+            self.game_state.reverse_players_order()
+            
         # If we're moving from night to day, increment the round number
         if next_phase == GamePhase.DAY_DISCUSSION:
             self.game_state.current_round += 1
@@ -500,6 +505,9 @@ class DayVotingController(PhaseController):
         for player in alive_players:
             agent = self.agents[player.id]
 
+            # Update agent memory with the current game state
+            agent.update_memory(self.game_state)
+            
             # Generate vote
             target_id = agent.generate_day_vote(self.game_state)
 

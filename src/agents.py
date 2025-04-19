@@ -11,8 +11,7 @@ from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from langchain.schema import BaseMessage, HumanMessage, AIMessage
 
-from src.models import Player, GameState, GamePhase, PlayerRole, Action, Message
-
+from src.models import Player, GameState, GamePhase, PlayerRole, Action, Message, GameEvent
 
 class BaseAgent(ABC):
     """Abstract base class for all player agents."""
@@ -31,6 +30,8 @@ class BaseAgent(ABC):
         self.max_message_length = config.get("max_message_length", 200)
         self.verbosity = config.get("verbosity", "elaborate")
         self.llm = None  # Will be set by subclasses
+        self.model_name = None  # Will be set by subclasses
+        self.model_name = config.get("model", "unknown")  # Store model name
         self.chat_history: List[BaseMessage] = []
         self.saved_memory: List[GameEvent] = [] # To track saved events
     
@@ -442,13 +443,23 @@ class OpenAIAgent(BaseAgent):
 
 {self.format_memory_for_prompt()}
 
-It's now the day discussion phase. Based on your role and the information you have, 
-what would you like to say to the group? Remember to stay in character and be strategic.
+Each round has two phases:
+Day (everyone talks and votes to eliminate someone)
+Night (Mafia secretly choose someone to eliminate and other roles may take actions)
+(No voting and night actions in day 1)
 
-If you're a Villager, try to identify suspicious behavior.
-If you're Mafia or Godfather, try to blend in and deflect suspicion.
-If you're the Doctor, be careful about revealing your role.
-If you're the Detective, consider whether to share your investigation results.
+It's now the day discussion phase. Based on your role and the information you have, 
+what would you like to say to the group? 
+
+Important notes:
+Stay in character. Use logic, suspicion, and conversation to influence others.
+Pay attention to what others say. Look for inconsistencies or suspicious behavior.
+Speak in short, clear messages. Convince others, defend yourself, or sow confusion (if Mafia).
+You may lie or tell the truth — depending on your goal.
+Speak up with your own reasoning. Don’t just agree — challenge or question what others say.
+Use firm language: “I believe X is Mafia because…” or “That logic doesn’t make sense.”
+Don’t copy tone or phrasing — write in your own distinct voice.
+Take attention to voting patterns and alliances. Who is working with whom?
 
 Your response should be a message to the group, limited to {self.max_message_length} characters.
 """
@@ -465,10 +476,10 @@ Your response should be a message to the group, limited to {self.max_message_len
 It's now time to vote for someone to eliminate. Based on your role and the information you have,
 who do you think is most suspicious and should be eliminated?
 
-If you're a Villager, Detective, or Doctor, try to vote for someone you suspect is Mafia.
-If you're Mafia or Godfather, try to vote for a Villager to protect yourself and your team.
+If you're in the villagers team, try to vote for a Mafia member.
+If you're in Mafia, try to vote for a Villager to protect yourself and your team, but be careful not to draw suspicion.
 
-Your response should clearly indicate which player you're voting for by name.
+Your response should clearly indicate which player you're voting for by name. Only mention ONE name in your response.
 """
         return prompt
     
@@ -485,6 +496,10 @@ Mafia team members are: {', '.join([name for name, p in game_state.players.items
 
 It's now the night phase, and you are with your Mafia teammates. This is a private discussion.
 Based on your role and the information you have, what would you like to discuss with your team?
+
+You should discuss your strategy for the night and the following days.
+You should also decide on a target to eliminate during the night phase based on your strategy.
+
 Your response should be a message to your Mafia teammates, limited to {self.max_message_length} characters.
 """
         return prompt
@@ -509,7 +524,8 @@ Your response should be a message to your Mafia teammates, limited to {self.max_
 
 It's now the night phase. Based on your role, you need to {action_description}.
 
-Your response should clearly indicate which player you're targeting by name.
+Your response should clearly indicate which player you're targeting by name. 
+ONLY mention ONE name in your response.
 """
         return prompt
 
@@ -519,7 +535,7 @@ class AnthropicAgent(BaseAgent):
     
     def initialize_llm(self):
         """Initialize the Anthropic language model."""
-        from langchain.chat_models import ChatAnthropic
+        from langchain_anthropic import ChatAnthropic
         
         model_name = self.config.get("model", "claude-3-7-sonnet-latest")
         self.llm = ChatAnthropic(model_name=model_name, temperature=0.7)
