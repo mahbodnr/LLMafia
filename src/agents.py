@@ -2,6 +2,7 @@
 Agent interface and implementations for the Mafia game.
 """
 
+import os
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any, Tuple
 import json
@@ -294,11 +295,12 @@ class BaseAgent(ABC):
             return "neutral"
     
     
-    def _create_system_prompt(self, game_state: GameState) -> str:
+    def _create_system_prompt(self) -> str:
         """Create a system prompt for the agent."""
         prompt = f"""You are {self.player.name} ({self.player.id}). You are playing a Mafia (Werewolf) game as a {self.player.role.name}.
         
-This game starts with {len(game_state.alive_players)} players, {game_state.alive_village_count} villagers and {game_state.alive_mafia_count} Mafia.
+This game starts with these roles:
+{self.config['roles']}
 
 Game Rules:
 - Villagers win if all Mafia are eliminated.
@@ -429,6 +431,10 @@ Respond with either "agree" or "disagree" and a very brief explanation of your r
 """
         return prompt
 
+    @abstractmethod
+    def _get_monitoring_kwargs(self) -> Dict[str, Any]:
+        """Get monitoring kwargs for the LLM."""
+        pass
 
 class DebugAgent(BaseAgent):
     """Debug agent for testing purposes."""
@@ -452,20 +458,8 @@ class DebugAgent(BaseAgent):
     def generate_response(self, prompt: str) -> str:
         """Generate a response (echo the prompt for debug agent)."""
         time.sleep(self.sleep_time)
-        return f"Debug agent response to prompt: >>{prompt}<<"
+        return f"Debug agent response"
     
-    def generate_day_discussion(self, game_state: GameState) -> str:
-        """Generate a debug discussion message."""
-        time.sleep(self.sleep_time)
-        prompt = self._create_day_discussion_prompt(game_state)
-        return f"Debug agent discussion: >>{prompt}<<"
-
-    def generate_mafia_discussion(self, game_state: GameState) -> str:
-        """Generate a debug discussion message."""
-        time.sleep(self.sleep_time)
-        prompt = self._create_day_discussion_prompt(game_state)
-        return f"Debug agent discussion: >>{prompt}<<"
-     
     def generate_day_vote(self, game_state: GameState) -> str:
         """Generate a debug vote."""
         # If no valid player found, return a random alive player that isn't self
@@ -508,6 +502,8 @@ class DebugAgent(BaseAgent):
             )
         return None
 
+    def _get_monitoring_kwargs(self):
+        return
 
 
 class OpenAIAgent(BaseAgent):
@@ -519,8 +515,30 @@ class OpenAIAgent(BaseAgent):
 
         
         model_name = self.config.get("model", "gpt-3.5-turbo")
-        self.llm = ChatOpenAI(model_name=model_name, temperature=0.7)
-    
+        self.llm = ChatOpenAI(model_name=model_name, temperature=0.7,  **self._get_monitoring_kwargs())
+
+    def _get_monitoring_kwargs(self) -> Dict[str, Any]:
+        """Get monitoring kwargs for the LLM."""
+        
+        # Check if Helicone is enabled and set up the API key
+        helicone_kwargs = {}
+        if self.config.get("helicone", {}).get("enabled", False):
+            helicone_api_key_env = self.config["helicone"].get("api_key_env", None)
+            if helicone_api_key_env:
+                helicone_api_key = os.getenv(helicone_api_key_env)
+                if helicone_api_key:
+                    helicone_kwargs = {   
+                        "openai_api_base": "https://oai.helicone.ai/v1",
+                        "model_kwargs":{
+                            "extra_headers":{
+                                "Helicone-Auth": f"Bearer {helicone_api_key}",
+                                "Helicone-Session-Id": self.config["game_id"],
+                                "Helicone-User-Id": self.player.id,
+                            }
+                        }
+                    }
+                    
+        return helicone_kwargs
 
 class AnthropicAgent(BaseAgent):
     """Agent implementation using Anthropic's Claude models."""
@@ -529,8 +547,31 @@ class AnthropicAgent(BaseAgent):
         """Initialize the Anthropic language model."""
         from langchain_anthropic import ChatAnthropic
         
-        model_name = self.config.get("model", "claude-3-7-sonnet-latest")
-        self.llm = ChatAnthropic(model_name=model_name, temperature=0.7)
+        model_name = self.config.get("model", "claude-3-7-sonnet-latest")             
+        self.llm = ChatAnthropic(model_name=model_name, temperature=0.7, **self._get_monitoring_kwargs())
+    
+    def _get_monitoring_kwargs(self) -> Dict[str, Any]:
+        """Get monitoring kwargs for the LLM."""
+        
+        # Check if Helicone is enabled and set up the API key
+        helicone_kwargs = {}
+        if self.config.get("helicone", {}).get("enabled", False):
+            helicone_api_key_env = self.config["helicone"].get("api_key_env", None)
+            if helicone_api_key_env:
+                helicone_api_key = os.getenv(helicone_api_key_env)
+                if helicone_api_key:
+                    helicone_kwargs = {
+                        "anthropic_api_url":"https://anthropic.helicone.ai",
+                        "model_kwargs":{
+                            "extra_headers":{
+                                "Helicone-Auth": f"Bearer {helicone_api_key}",
+                                "Helicone-Session-Id": self.config["game_id"],
+                                "Helicone-User-Id": self.player.id,
+                            }
+                        }
+                    }
+                    
+        return helicone_kwargs
     
 class GeminiAgent(BaseAgent):
     """Agent implementation using Google's Gemini models."""
@@ -540,9 +581,30 @@ class GeminiAgent(BaseAgent):
         from langchain_google_genai import ChatGoogleGenerativeAI
         
         model_name = self.config.get("model", "gemini-pro")
-        self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.7)
+        self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.7, **self._get_monitoring_kwargs())
     
-
+    def _get_monitoring_kwargs(self) -> Dict[str, Any]:
+        """Get monitoring kwargs for the LLM."""
+        # Check if Helicone is enabled and set up the API key
+        helicone_kwargs = {}
+        if self.config.get("helicone", {}).get("enabled", False):
+            helicone_api_key_env = self.config["helicone"].get("api_key_env", None)
+            if helicone_api_key_env:
+                helicone_api_key = os.getenv(helicone_api_key_env)
+                if helicone_api_key:
+                    helicone_kwargs = {
+                    "client_options":{"api_endpoint": "https://gateway.helicone.ai"},
+                    "additional_headers":{
+                        "helicone-auth": f"Bearer {helicone_api_key}",
+                        "helicone-target-url": "https://generativelanguage.googleapis.com",
+                        "Helicone-Session-Id": self.config["game_id"],
+                        "Helicone-User-Id": self.player.id,
+                    },
+                    "transport": "rest",
+                    }
+        return helicone_kwargs
+    
+    
 def create_agent(player: Player, provider: str, config: Dict[str, Any]) -> BaseAgent:
     """
     Factory function to create an agent based on the specified provider.

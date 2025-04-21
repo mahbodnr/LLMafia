@@ -5,6 +5,7 @@ Game controllers for managing different phases of the Mafia game.
 from typing import Dict, List, Optional, Any, Tuple
 import random
 import logging
+import uuid
 
 from src.models import (
     GameState,
@@ -62,6 +63,10 @@ class GameController:
         Returns:
             The initial game state
         """
+        # generate a game id:
+        self.game_id = str(uuid.uuid4())
+        self.config["game_id"] = self.game_id
+        
         # Get role distribution from config
         role_distribution = self.config.get(
             "roles",
@@ -140,22 +145,29 @@ class GameController:
         """Initialize agents for all players."""
         # Get agent settings from config
         agent_config = self.config.get(
-            "agent",
-            {
-                "verbosity": "elaborate",
-                "max_message_length": 200,
-                "memory_limit": None,
-            },
-        )
+                "agent",
+                {
+                    "verbosity": "elaborate",
+                    "max_message_length": 200,
+                    "memory_limit": None,
+                },
+            )
+        
+        game_config = {
+            "roles": self.config.get("roles", {}),
+            "game_id": self.game_id,
+        }
+        
+        moitoring_config = self.config.get("monitoring", {})
 
         # Get LLM provider settings
         llm_providers = self.config.get(
             "llm_providers",
             {
-                "openai": {"model": "gpt-4o-mini"},
-                # "debug": {"model": "debug"},
-                "anthropic": {"model": "claude-3-7-sonnet-latest"},
-                "google": {"model": "gemini-2.0-flash-lite"},
+                # "openai": {"model": "gpt-4o-mini"},
+                "debug": {"model": "debug"},
+                # "anthropic": {"model": "claude-3-7-sonnet-latest"},
+                # "google": {"model": "gemini-2.0-flash-lite"},
             },
         )
 
@@ -167,7 +179,7 @@ class GameController:
             provider_config = llm_providers.get(provider, {})
 
             # Merge provider config with agent config
-            combined_config = {**agent_config, **provider_config}
+            combined_config = {**agent_config, **game_config, **provider_config, **moitoring_config}
 
             # Create agent
             self.agents[player_id] = create_agent(player, provider, combined_config)
@@ -511,18 +523,17 @@ class DayVotingController(PhaseController):
             # Generate vote
             target_id = agent.generate_day_vote(self.game_state)
 
+            if not target_id:
+                # Skip if no target is generated
+                continue
+
             # Validate vote
             if target_id not in self.game_state.alive_players or target_id == player.id:
-                # Invalid vote, choose randomly
-                valid_targets = [
-                    pid
-                    for pid in self.game_state.alive_players.keys()
-                    if pid != player.id
-                ]
-                if valid_targets:
-                    target_id = random.choice(valid_targets)
-                else:
-                    continue  # Skip if no valid targets
+                # Invalid vote, 
+                logger.warning(
+                    f"{player.name} attempted to vote for an invalid target: {target_id}"
+                )
+                continue  # Skip if no valid targets
 
             # Create vote object
             vote = Vote(

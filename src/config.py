@@ -62,6 +62,14 @@ LLM_PROVIDERS = {
     }
 }
 
+# Monitoring settings
+MONITORING = {
+    "helicone": {
+        "enabled": True,
+        "api_key_env": "HELICONE_API_KEY",
+    }
+}
+
 # Web UI settings
 UI_SETTINGS = {
     "port": 5000,

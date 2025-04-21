@@ -217,9 +217,28 @@ function initializeSocket() {
                 nextPhaseButton.disabled = true;
             } else {
                 // This is a regular speaker message
-                currentSpeakerName.textContent = data.player_name || 'Speaker';
-                currentSpeakerMessage.textContent = data.message || 'No message';
-                continueButton.disabled = false;
+                const centerContent = centerDisplay.querySelector('.center-content'); // Get the content container
+
+                // Set the HTML for the speaker display, ensuring IDs match original elements if possible
+                centerContent.innerHTML = `
+                    <h4 id="current-speaker-name">${data.player_name || 'Speaker'}</h4>
+                    <p id="current-speaker-message">${data.message || 'No message'}</p>
+                    <div class="text-center mt-3">
+                         <button id="continue-button" class="btn btn-primary">Continue</button>
+                     </div>
+                `;
+
+                // Re-find the continue button *after* setting innerHTML
+                const speakerContinueButton = document.getElementById('continue-button');
+                if (speakerContinueButton) {
+                     // Remove previous listener if any (safer) and add the correct one
+                     speakerContinueButton.removeEventListener('click', continueAfterSpeaker); // Remove old listener if exists
+                     speakerContinueButton.addEventListener('click', continueAfterSpeaker); // Add the correct listener
+                     speakerContinueButton.disabled = false;
+                } else {
+                    console.error("Could not find speaker continue button after update.");
+                }
+
                 nextPhaseButton.disabled = true;
             }
         } else {

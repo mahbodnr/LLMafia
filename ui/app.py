@@ -101,14 +101,22 @@ def handle_start_game(settings):
         },
         "agent": {
             "verbosity": "elaborate" if settings["verboseMode"] else "brief",
-            "max_message_length": 500,
+            "max_message_length": 300,
             "memory_limit": None,
         },
         "mechanics": {
             "godfather_appears_innocent": True,
             "reveal_role_on_death": True,
         },
-    }
+        "monitoring":
+            {
+                "helicone": {
+                    "enabled": True,
+                    "api_key_env": "HELICONE_API_KEY",
+                }
+            }
+        }
+    
 
     # Create game instance
     game = MafiaGame(config)
@@ -311,7 +319,6 @@ def execute_phase_in_background(sid):
     try:
         # Run the current phase - will trigger message callbacks
         phase_result = game.game_controller.run_phase()
-        
         
         # Advance to next phase
         game.game_controller.advance_phase()        
@@ -582,6 +589,7 @@ def emit_speaker_prompt(message):
         
         socketio.emit("center_display", {
             "active": True,
+            "is_action": False,
             "speaker_id": message.sender_id,
             "player_name": player_name,
             "message": message_content
