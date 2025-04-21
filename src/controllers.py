@@ -132,6 +132,8 @@ class GameController:
             public=True,
         )
 
+        self.phase_completed = False
+
         return self.game_state
 
     def _initialize_agents(self):
@@ -142,7 +144,7 @@ class GameController:
             {
                 "verbosity": "elaborate",
                 "max_message_length": 200,
-                "memory_limit": 10,
+                "memory_limit": None,
             },
         )
 
@@ -170,8 +172,6 @@ class GameController:
             # Create agent
             self.agents[player_id] = create_agent(player, provider, combined_config)
 
-
-        self.phase_completed = False
 
     def register_callback(self, event_type: str, callback):
         """
@@ -761,8 +761,6 @@ class NightActionController(PhaseController):
             action = agent.generate_night_action(self.game_state)
 
             if action:
-                self.emit_event("action", action)
-
                 actions[player.role] = action
 
                 # Add action to game state
@@ -799,6 +797,8 @@ class NightActionController(PhaseController):
 
         # Process detective action
         if investigate_action:
+            self.emit_event("action", investigate_action)
+            
             detective = self.game_state.players[investigate_action.actor_id]
             target = self.game_state.players[investigate_action.target_id]
 
@@ -812,7 +812,7 @@ class NightActionController(PhaseController):
             result = (
                 "innocent"
                 if (target.team == TeamAlignment.VILLAGE or appears_innocent)
-                else "suspicious"
+                else "Mafia"
             )
 
             # Update detective's knowledge
@@ -830,6 +830,8 @@ class NightActionController(PhaseController):
         # Process doctor action
         protected_player_id = None
         if protect_action:
+            self.emit_event("action", protect_action)
+            
             protected_player_id = protect_action.target_id
             protected_player = self.game_state.players[protected_player_id]
             protected_player.protected = True
@@ -844,6 +846,8 @@ class NightActionController(PhaseController):
 
         # Process kill action
         if kill_action:
+            self.emit_event("action", kill_action)
+            
             target_id = kill_action.target_id
             target = self.game_state.players[target_id]
 

@@ -101,7 +101,7 @@ def handle_start_game(settings):
         },
         "agent": {
             "verbosity": "elaborate" if settings["verboseMode"] else "brief",
-            "max_message_length": 200,
+            "max_message_length": 500,
             "memory_limit": None,
         },
         "mechanics": {

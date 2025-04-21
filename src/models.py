@@ -140,6 +140,18 @@ class GameState:
                 if player.team == TeamAlignment.VILLAGE}
     
     @property
+    def alive_mafia_players(self) -> Dict[str, Player]:
+        """Get all mafia players who are still alive."""
+        return {pid: player for pid, player in self.players.items() 
+                if player.is_alive and player.team == TeamAlignment.MAFIA}
+        
+    @property
+    def alive_village_players(self) -> Dict[str, Player]:
+        """Get all village players who are still alive."""
+        return {pid: player for pid, player in self.players.items() 
+                if player.is_alive and player.team == TeamAlignment.VILLAGE}
+        
+    @property
     def alive_mafia_count(self) -> int:
         """Get the number of mafia players who are still alive."""
         return sum(1 for player in self.players.values() 

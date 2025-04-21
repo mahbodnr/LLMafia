@@ -9,7 +9,7 @@ import time
 
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from langchain.schema import BaseMessage, HumanMessage, AIMessage
+from langchain.schema import BaseMessage, HumanMessage, AIMessage, SystemMessage
 
 from src.models import Player, GameState, GamePhase, PlayerRole, Action, Message, GameEvent
 
@@ -32,19 +32,29 @@ class BaseAgent(ABC):
         self.llm = None  # Will be set by subclasses
         self.model_name = None  # Will be set by subclasses
         self.model_name = config.get("model", "unknown")  # Store model name
-        self.chat_history: List[BaseMessage] = []
         self.saved_memory: List[GameEvent] = [] # To track saved events
+        self.system_message = SystemMessage(self._create_system_prompt())
     
     @abstractmethod
     def initialize_llm(self):
         """Initialize the language model for this agent."""
         pass
     
-    @abstractmethod
     def generate_response(self, prompt: str) -> str:
         """Generate a response from the agent based on the prompt."""
-        pass
+        if not self.llm:
+            self.initialize_llm()
+                
+        # Generate response
+        response = self.llm.invoke([self.system_message] + [HumanMessage(prompt)])
+        
+        # Truncate response if needed
+        if len(response.content) > self.max_message_length:
+            return response.content[:self.max_message_length] + "..."
+        
+        return response.content
     
+        
     def update_memory(self, game_state: GameState):
         """
         Update the agent's memory with relevant game events.
@@ -149,7 +159,6 @@ class BaseAgent(ABC):
         
         return memory_str
     
-    @abstractmethod
     def generate_day_discussion(self, game_state: GameState) -> str:
         """
         Generate a discussion message during the day phase.
@@ -160,9 +169,9 @@ class BaseAgent(ABC):
         Returns:
             The agent's discussion message
         """
-        pass
-    
-    @abstractmethod
+        prompt = self._create_day_discussion_prompt(game_state)
+        return self.generate_response(prompt)
+        
     def generate_day_vote(self, game_state: GameState) -> str:
         """
         Generate a vote during the day phase.
@@ -173,9 +182,38 @@ class BaseAgent(ABC):
         Returns:
             The ID of the player to vote for
         """
-        pass
+        prompt = self._create_day_vote_prompt(game_state)
+        response = self.generate_response(prompt)
+        
+        # Extract the player name or ID from the response
+        # This is a simple implementation and might need more robust parsing
+        for player_id, player in game_state.alive_players.items():
+            if player.name.lower() in response.lower() and player_id != self.player.id:
+                return player_id
+        
+        print(f"[Debug] No valid player found in response: {response}")
+
+        return ""
     
-    @abstractmethod
+        # # If no valid player found, return a random alive player that isn't self
+        # import random
+        # alive_players = [pid for pid in game_state.alive_players.keys() if pid != self.player.id]
+        # if alive_players:
+        #     return random.choice(alive_players)
+        # return "" 
+                
+    def generate_mafia_discussion(self, game_state: GameState) -> str:
+        """
+        Generate a discussion message during the night phase for Mafia players.
+        Args:
+            game_state: Current state of the game
+        Returns:
+            The agent's discussion message
+        """
+        prompt = self._create_mafia_discussion_prompt(game_state)
+        return self.generate_response(prompt)
+    
+    
     def generate_night_action(self, game_state: GameState) -> Optional[Action]:
         """
         Generate a night action based on the player's role.
@@ -186,7 +224,48 @@ class BaseAgent(ABC):
         Returns:
             An Action object representing the night action, or None if no action
         """
-        pass
+        if self.player.role == PlayerRole.VILLAGER:
+            # Villagers have no night action
+            return None
+        
+        prompt = self._create_night_action_prompt(game_state)
+        response = self.generate_response(prompt)
+        
+        # Extract the target player from the response
+        target_id = None
+        for player_id, player in game_state.alive_players.items():
+            if player.name.lower() in response.lower():
+                target_id = player_id
+                break
+        
+        if not target_id:
+            print(f"[Debug] No valid target found in response: {response}")
+            # If no valid target found, choose randomly
+            # import random
+            # alive_players = [pid for pid in game_state.alive_players.keys() if pid != self.player.id]
+            # if alive_players:
+            #     target_id = random.choice(alive_players)
+        
+        if not target_id:
+            return None
+        
+        # Create the appropriate action based on role
+        action_type = ""
+        if self.player.role == PlayerRole.MAFIA or self.player.role == PlayerRole.GODFATHER:
+            action_type = "kill"
+        elif self.player.role == PlayerRole.DOCTOR:
+            action_type = "protect"
+        elif self.player.role == PlayerRole.DETECTIVE:
+            action_type = "investigate"
+        
+        return Action(
+            actor_id=self.player.id,
+            action_type=action_type,
+            target_id=target_id,
+            round_num=game_state.current_round,
+            phase=GamePhase.NIGHT_ACTION
+        )    
+        
     
     def react_to_message(self, message: Message, game_state: GameState) -> str:
         """
@@ -214,6 +293,117 @@ class BaseAgent(ABC):
             # Default to a neutral response if unclear
             return "neutral"
     
+    
+    def _create_system_prompt(self, game_state: GameState) -> str:
+        """Create a system prompt for the agent."""
+        prompt = f"""You are {self.player.name} ({self.player.id}). You are playing a Mafia (Werewolf) game as a {self.player.role.name}.
+        
+This game starts with {len(game_state.alive_players)} players, {game_state.alive_village_count} villagers and {game_state.alive_mafia_count} Mafia.
+
+Game Rules:
+- Villagers win if all Mafia are eliminated.
+- Mafia win if they outnumber or equal the Villagers.
+
+Special Roles:
+- Doctor (villager): Protects a player from being eliminated at night.
+- Detective (villager): Investigates a player to check if they are Mafia.
+- Godfather (Mafia): Appears as a Villager to the Detective. Has the final say in Mafia decisions.
+
+Each round has two phases:
+- Day (everyone talks and votes to eliminate someone)
+- Night (Mafia secretly choose someone to eliminate and other roles may take actions)
+(No voting and night actions in day 1)
+
+Important notes:
+- Pay attention to what others say. Look for inconsistencies or suspicious behavior.
+- Speak in short, clear messages. Convince others, defend yourself, or sow confusion (if Mafia).
+- You may lie or tell the truth — depending on your goal.
+- Speak up with your own reasoning. Don’t just agree — challenge or question what others say.
+- Use firm language: “I believe X is Mafia because…” or “That logic doesn’t make sense.”
+- Don’t copy tone or repeat others. Try to add something new to the discussion with each point.
+- Take attention to voting patterns and alliances. Who is working with whom?
+- If you have no guess or clue, you can accuse someone and conclude based on their and others' reactions.
+- Avoid complecated language.
+"""
+        return prompt
+        
+    def _create_day_discussion_prompt(self, game_state: GameState) -> str:
+        """Create a prompt for day discussion."""
+        prompt = f"""
+{self.format_game_state_for_prompt(game_state)}
+
+{self.format_memory_for_prompt()}
+
+It's now the day discussion phase. Based on your role and the information you have, 
+what would you like to say to the group? 
+
+Your response should be a message to the group, limited to {self.max_message_length} characters.
+"""
+        return prompt
+    
+    def _create_day_vote_prompt(self, game_state: GameState) -> str:
+        """Create a prompt for day voting."""
+        prompt = f"""
+{self.format_game_state_for_prompt(game_state)}
+
+{self.format_memory_for_prompt()}
+
+
+It's now time to vote for someone to eliminate. Based on your role and the information you have,
+who do you think is most suspicious and should be eliminated?
+
+If you're in the villagers team, try to vote for a Mafia member.
+If you're in Mafia, try to vote for a Villager to protect yourself and your team, but be careful not to draw suspicion.
+
+Your response should clearly indicate which player you're voting for by name. Only mention ONE name in your response.
+"""
+        return prompt
+    
+
+    def _create_mafia_discussion_prompt(self, game_state: GameState) -> str:
+        """Create a prompt for mafia discussion during the night phase."""
+        prompt = f"""
+Mafia team members are: {', '.join([name for name, p in game_state.players.items() if p.team == PlayerRole.MAFIA])}.
+
+{self.format_game_state_for_prompt(game_state)}
+
+{self.format_memory_for_prompt()}
+
+It's now the night phase, and you are with your Mafia teammates. This is a private discussion.
+Based on your role and the information you have, what would you like to discuss with your team?
+
+You should discuss your strategy for the night and the following days.
+You should also decide on a target to eliminate during the night phase based on your strategy (no elimination in day 1).
+
+Your response should be a message to your Mafia teammates, limited to {self.max_message_length} characters.
+"""
+        return prompt
+
+    def _create_night_action_prompt(self, game_state: GameState) -> str:
+        """Create a prompt for night actions."""
+        action_description = ""
+        if self.player.role == PlayerRole.MAFIA or self.player.role == PlayerRole.GODFATHER:
+            action_description = "choose a player to eliminate"
+        elif self.player.role == PlayerRole.DOCTOR:
+            action_description = "choose a player to protect for the night"
+        elif self.player.role == PlayerRole.DETECTIVE:
+            action_description = "choose a player to investigate"
+        else:
+            print(f"[Debug] No valid action for role: {self.player.role.name}")
+        
+        prompt = f"""
+        
+{self.format_game_state_for_prompt(game_state)}
+
+{self.format_memory_for_prompt()}
+
+It's now the night phase. Based on your role, you need to {action_description}.
+
+Your response should clearly indicate which player you're targeting by name. 
+ONLY mention ONE name in your response.
+"""
+        return prompt
+
     def _create_reaction_prompt(self, message: Message, game_state: GameState) -> str:
         """
         Create a prompt for reacting to a message.
@@ -227,8 +417,7 @@ class BaseAgent(ABC):
         """
         sender = game_state.players[message.sender_id].name
         
-        prompt = f"""You are playing a Mafia/Werewolf game as a {self.player.role.name}.
-        
+        prompt = f"""
 {self.format_game_state_for_prompt(game_state)}
 
 {self.format_memory_for_prompt()}
@@ -296,6 +485,7 @@ class DebugAgent(BaseAgent):
         # If no valid target found, choose randomly
         time.sleep(self.sleep_time)
         import random
+        
         alive_players = [pid for pid in game_state.alive_players.keys() if pid != self.player.id]
         if alive_players:
             target_id = random.choice(alive_players)
@@ -318,10 +508,6 @@ class DebugAgent(BaseAgent):
             )
         return None
 
-    def _create_day_discussion_prompt(self, game_state: GameState) -> str:
-        """Create a debug prompt for day discussion."""
-        time.sleep(self.sleep_time)
-        return "Debug agent discussion prompt."
 
 
 class OpenAIAgent(BaseAgent):
@@ -335,200 +521,6 @@ class OpenAIAgent(BaseAgent):
         model_name = self.config.get("model", "gpt-3.5-turbo")
         self.llm = ChatOpenAI(model_name=model_name, temperature=0.7)
     
-    def generate_response(self, prompt: str) -> str:
-        """Generate a response using the OpenAI language model."""
-        if not self.llm:
-            self.initialize_llm()
-        
-        # Add the prompt to chat history
-        self.chat_history.append(HumanMessage(content=prompt))
-        
-        # Generate response
-        response = self.llm.invoke(self.chat_history)
-        
-        # Add response to chat history
-        self.chat_history.append(AIMessage(content=response.content))
-        
-        # Trim chat history if it gets too long
-        if len(self.chat_history) > 10:
-            self.chat_history = self.chat_history[-10:]
-        
-        # Truncate response if needed
-        if len(response.content) > self.max_message_length:
-            return response.content[:self.max_message_length] + "..."
-        
-        return response.content
-    
-    def generate_day_discussion(self, game_state: GameState) -> str:
-        """Generate a discussion message during the day phase."""
-        prompt = self._create_day_discussion_prompt(game_state)
-        return self.generate_response(prompt)
-    
-    def generate_mafia_discussion(self, game_state: GameState) -> str:
-        """Generate a discussion message during the mafia night phase."""
-        prompt = self._create_mafia_discussion_prompt(game_state)
-        return self.generate_response(prompt)
-    
-    def generate_day_vote(self, game_state: GameState) -> str:
-        """Generate a vote during the day phase."""
-        prompt = self._create_day_vote_prompt(game_state)
-        response = self.generate_response(prompt)
-        
-        # Extract the player name or ID from the response
-        # This is a simple implementation and might need more robust parsing
-        for player_id, player in game_state.alive_players.items():
-            if player.name.lower() in response.lower() and player_id != self.player.id:
-                return player_id
-        
-        print(f"[Debug] No valid player found in response: {response}")
-
-        return ""
-    
-        # # If no valid player found, return a random alive player that isn't self
-        # import random
-        # alive_players = [pid for pid in game_state.alive_players.keys() if pid != self.player.id]
-        # if alive_players:
-        #     return random.choice(alive_players)
-        # return ""
-    
-    def generate_night_action(self, game_state: GameState) -> Optional[Action]:
-        """Generate a night action based on the player's role."""
-        if self.player.role == PlayerRole.VILLAGER:
-            # Villagers have no night action
-            return None
-        
-        prompt = self._create_night_action_prompt(game_state)
-        response = self.generate_response(prompt)
-        
-        # Extract the target player from the response
-        target_id = None
-        for player_id, player in game_state.alive_players.items():
-            if player.name.lower() in response.lower():
-                target_id = player_id
-                break
-        
-        if not target_id:
-            print(f"[Debug] No valid target found in response: {response}")
-            # If no valid target found, choose randomly
-            # import random
-            # alive_players = [pid for pid in game_state.alive_players.keys() if pid != self.player.id]
-            # if alive_players:
-            #     target_id = random.choice(alive_players)
-        
-        if not target_id:
-            return None
-        
-        # Create the appropriate action based on role
-        action_type = ""
-        if self.player.role == PlayerRole.MAFIA or self.player.role == PlayerRole.GODFATHER:
-            action_type = "kill"
-        elif self.player.role == PlayerRole.DOCTOR:
-            action_type = "protect"
-        elif self.player.role == PlayerRole.DETECTIVE:
-            action_type = "investigate"
-        
-        return Action(
-            actor_id=self.player.id,
-            action_type=action_type,
-            target_id=target_id,
-            round_num=game_state.current_round,
-            phase=GamePhase.NIGHT_ACTION
-        )
-    
-    def _create_day_discussion_prompt(self, game_state: GameState) -> str:
-        """Create a prompt for day discussion."""
-        prompt = f"""You are playing a Mafia/Werewolf game as a {self.player.role.name}.
-
-{self.format_game_state_for_prompt(game_state)}
-
-{self.format_memory_for_prompt()}
-
-Each round has two phases:
-Day (everyone talks and votes to eliminate someone)
-Night (Mafia secretly choose someone to eliminate and other roles may take actions)
-(No voting and night actions in day 1)
-
-It's now the day discussion phase. Based on your role and the information you have, 
-what would you like to say to the group? 
-
-Important notes:
-Stay in character. Use logic, suspicion, and conversation to influence others.
-Pay attention to what others say. Look for inconsistencies or suspicious behavior.
-Speak in short, clear messages. Convince others, defend yourself, or sow confusion (if Mafia).
-You may lie or tell the truth — depending on your goal.
-Speak up with your own reasoning. Don’t just agree — challenge or question what others say.
-Use firm language: “I believe X is Mafia because…” or “That logic doesn’t make sense.”
-Don’t copy tone or phrasing — write in your own distinct voice.
-Take attention to voting patterns and alliances. Who is working with whom?
-
-Your response should be a message to the group, limited to {self.max_message_length} characters.
-"""
-        return prompt
-    
-    def _create_day_vote_prompt(self, game_state: GameState) -> str:
-        """Create a prompt for day voting."""
-        prompt = f"""You are playing a Mafia/Werewolf game as a {self.player.role.name}.
-
-{self.format_game_state_for_prompt(game_state)}
-
-{self.format_memory_for_prompt()}
-
-It's now time to vote for someone to eliminate. Based on your role and the information you have,
-who do you think is most suspicious and should be eliminated?
-
-If you're in the villagers team, try to vote for a Mafia member.
-If you're in Mafia, try to vote for a Villager to protect yourself and your team, but be careful not to draw suspicion.
-
-Your response should clearly indicate which player you're voting for by name. Only mention ONE name in your response.
-"""
-        return prompt
-    
-
-    def _create_mafia_discussion_prompt(self, game_state: GameState) -> str:
-        """Create a prompt for mafia discussion during the night phase."""
-        prompt = f"""You are playing a Mafia/Werewolf game as a {self.player.role.name}.
-
-Mafia team members are: {', '.join([name for name, p in game_state.players.items() if p.team == PlayerRole.MAFIA])}.
-
-{self.format_game_state_for_prompt(game_state)}
-
-{self.format_memory_for_prompt()}
-
-It's now the night phase, and you are with your Mafia teammates. This is a private discussion.
-Based on your role and the information you have, what would you like to discuss with your team?
-
-You should discuss your strategy for the night and the following days.
-You should also decide on a target to eliminate during the night phase based on your strategy.
-
-Your response should be a message to your Mafia teammates, limited to {self.max_message_length} characters.
-"""
-        return prompt
-
-    def _create_night_action_prompt(self, game_state: GameState) -> str:
-        """Create a prompt for night actions."""
-        action_description = ""
-        if self.player.role == PlayerRole.MAFIA or self.player.role == PlayerRole.GODFATHER:
-            action_description = "choose a player to eliminate"
-        elif self.player.role == PlayerRole.DOCTOR:
-            action_description = "choose a player to protect for the night"
-        elif self.player.role == PlayerRole.DETECTIVE:
-            action_description = "choose a player to investigate"
-        else:
-            action_description = "observe the night (you have no special action)"
-        
-        prompt = f"""You are playing a Mafia/Werewolf game as a {self.player.role.name}.
-
-{self.format_game_state_for_prompt(game_state)}
-
-{self.format_memory_for_prompt()}
-
-It's now the night phase. Based on your role, you need to {action_description}.
-
-Your response should clearly indicate which player you're targeting by name. 
-ONLY mention ONE name in your response.
-"""
-        return prompt
-
 
 class AnthropicAgent(BaseAgent):
     """Agent implementation using Anthropic's Claude models."""
@@ -540,41 +532,6 @@ class AnthropicAgent(BaseAgent):
         model_name = self.config.get("model", "claude-3-7-sonnet-latest")
         self.llm = ChatAnthropic(model_name=model_name, temperature=0.7)
     
-    def generate_response(self, prompt: str) -> str:
-        """Generate a response using the Anthropic language model."""
-        if not self.llm:
-            self.initialize_llm()
-        
-        # Add the prompt to chat history
-        self.chat_history.append(HumanMessage(content=prompt))
-        
-        # Generate response
-        response = self.llm.invoke(self.chat_history)
-        
-        # Add response to chat history
-        self.chat_history.append(AIMessage(content=response.content))
-        
-        # Trim chat history if it gets too long
-        if len(self.chat_history) > 10:
-            self.chat_history = self.chat_history[-10:]
-        
-        # Truncate response if needed
-        if len(response.content) > self.max_message_length:
-            return response.content[:self.max_message_length] + "..."
-        
-        return response.content
-    
-    # The rest of the methods are identical to OpenAIAgent
-    generate_day_discussion = OpenAIAgent.generate_day_discussion
-    generate_mafia_discussion = OpenAIAgent.generate_mafia_discussion
-    generate_day_vote = OpenAIAgent.generate_day_vote
-    generate_night_action = OpenAIAgent.generate_night_action
-    _create_day_discussion_prompt = OpenAIAgent._create_day_discussion_prompt
-    _create_mafia_discussion_prompt = OpenAIAgent._create_mafia_discussion_prompt
-    _create_day_vote_prompt = OpenAIAgent._create_day_vote_prompt
-    _create_night_action_prompt = OpenAIAgent._create_night_action_prompt
-
-
 class GeminiAgent(BaseAgent):
     """Agent implementation using Google's Gemini models."""
     
@@ -585,40 +542,6 @@ class GeminiAgent(BaseAgent):
         model_name = self.config.get("model", "gemini-pro")
         self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0.7)
     
-    def generate_response(self, prompt: str) -> str:
-        """Generate a response using the Google Gemini language model."""
-        if not self.llm:
-            self.initialize_llm()
-        
-        # Add the prompt to chat history
-        self.chat_history.append(HumanMessage(content=prompt))
-        
-        # Generate response
-        response = self.llm.invoke(self.chat_history)
-        
-        # Add response to chat history
-        self.chat_history.append(AIMessage(content=response.content))
-        
-        # Trim chat history if it gets too long
-        if len(self.chat_history) > 10:
-            self.chat_history = self.chat_history[-10:]
-        
-        # Truncate response if needed
-        if len(response.content) > self.max_message_length:
-            return response.content[:self.max_message_length] + "..."
-        
-        return response.content
-    
-    # The rest of the methods are identical to OpenAIAgent
-    generate_day_discussion = OpenAIAgent.generate_day_discussion
-    generate_mafia_discussion = OpenAIAgent.generate_mafia_discussion
-    generate_day_vote = OpenAIAgent.generate_day_vote
-    generate_night_action = OpenAIAgent.generate_night_action
-    _create_day_discussion_prompt = OpenAIAgent._create_day_discussion_prompt
-    _create_mafia_discussion_prompt = OpenAIAgent._create_mafia_discussion_prompt
-    _create_day_vote_prompt = OpenAIAgent._create_day_vote_prompt
-    _create_night_action_prompt = OpenAIAgent._create_night_action_prompt
-
 
 def create_agent(player: Player, provider: str, config: Dict[str, Any]) -> BaseAgent:
     """
