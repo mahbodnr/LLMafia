@@ -105,11 +105,11 @@ def handle_start_game(settings):
             "memory_limit": None,
         },
         "llm_providers":{
-            "ollama": {"model": "deepseek-r1:70b", "base_url": os.environ.get("OLLAMA_URL", "http://localhost:11434")},
-            "openai": {"model": "gpt-4o-mini"},
-            # "debug": {"model": "debug"},
-            "anthropic": {"model": "claude-3-5-sonnet-latest"},
-            "google": {"model": "gemini-2.0-flash"},
+            # "ollama": {"model": "deepseek-r1:70b", "base_url": os.environ.get("OLLAMA_URL", "http://localhost:11434")},
+            # "openai": {"model": "gpt-4o-mini"},
+            # "anthropic": {"model": "claude-3-5-sonnet-latest"},
+            # "google": {"model": "gemini-2.0-flash"},
+            "debug": {"model": "debug"},
         },
         "mechanics": {
             "godfather_appears_innocent": True,
@@ -440,7 +440,7 @@ def handle_get_player_memory(player_id):
             memory_item["round"] = entry["round"]
             memory_item["phase"] = entry["phase"]
             
-            if entry["type"] == "event":
+            if entry["type"] in ["event", "inner_thought"]:
                 memory_item["description"] = entry["description"]
             elif entry["type"] == "message":
                 memory_item["sender"] = entry["sender_name"]

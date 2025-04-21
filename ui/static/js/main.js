@@ -408,8 +408,8 @@ function startGame() {
 function nextPhase() {
     console.log("Moving to next phase");
     socket.emit('next_phase');
-    // Hide any vote result display
-    // REMOVE hideVoteResult();
+    // Show loading message in center display
+    showPhaseLoadingMessage();
 }
 
 // Reset the game
@@ -635,9 +635,11 @@ function displayPlayerMemory(data) {
     let html = '<div class="memory-timeline">';
     
     data.memory.forEach(entry => {
-        // Check if it's an event or message type
+        // Check memory entry type
         if (entry.type === "event") {
             html += createEventMemoryEntry(entry);
+        } else if (entry.type === "inner_thought") {
+            html += createInnerThoughtMemoryEntry(entry);
         } else if (entry.type === "message") {
             html += createMessageMemoryEntry(entry, data.name);
         } else {
@@ -664,6 +666,23 @@ function createEventMemoryEntry(entry) {
                 <span class="memory-type-badge event-badge">Event</span>
             </div>
             <div class="memory-entry-content">${entry.description}</div>
+        </div>
+    `;
+}
+
+// Create HTML for an inner thought memory entry
+function createInnerThoughtMemoryEntry(entry) {
+    return `
+        <div class="memory-entry memory-inner-thought fade-in">
+            <div class="memory-entry-header">
+                <span class="memory-round">Round ${entry.round}</span>
+                <span class="memory-phase">${entry.phase}</span>
+                <span class="memory-type-badge thought-badge">Inner Thought</span>
+            </div>
+            <div class="memory-entry-content">
+                <i class="fas fa-brain" style="margin-right: 8px; color: #9c27b0;"></i>
+                ${entry.description}
+            </div>
         </div>
     `;
 }
@@ -1272,4 +1291,34 @@ function downloadTranscript() {
             URL.revokeObjectURL(url);
         }, 0);
     });
+}
+// Function to show loading message during phase transition
+function showPhaseLoadingMessage() {
+    // Get the center display and content
+    const centerDisplay = document.getElementById('center-display');
+    const centerContent = centerDisplay.querySelector('.center-content');
+    
+    // Get the current time (day/night) for styling
+    const isNight = gameState.time === 'night';
+    const loadingColor = isNight ? '#375a7f' : '#3498db';
+    const loadingBackground = isNight ? 'rgba(55, 90, 127, 0.1)' : 'rgba(52, 152, 219, 0.1)';
+    
+    // Update the center display with loading message
+    centerDisplay.style.display = 'flex';
+    centerContent.innerHTML = `
+        <div class="loading-display" style="padding: 20px; border-radius: 5px; background-color: ${loadingBackground}; border-left: 5px solid ${loadingColor};">
+            <h4 style="color: ${loadingColor}; display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                <i class="fas fa-hourglass-half fa-spin"></i> Models are Thinking
+            </h4>
+            <div class="text-center mb-4">
+                <div class="spinner-border" role="status" style="color: ${loadingColor};">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+            <p style="text-align: center;">Please wait while players prepare their speeches...</p>
+        </div>
+    `;
+    
+    // Disable next phase button while loading
+    nextPhaseButton.disabled = true;
 }
