@@ -104,6 +104,13 @@ def handle_start_game(settings):
             "max_message_length": 300,
             "memory_limit": None,
         },
+        "llm_providers":{
+            "ollama": {"model": "deepseek-r1:70b", "base_url": os.environ.get("OLLAMA_URL", "http://localhost:11434")},
+            "openai": {"model": "gpt-4o-mini"},
+            # "debug": {"model": "debug"},
+            "anthropic": {"model": "claude-3-5-sonnet-latest"},
+            "google": {"model": "gemini-2.0-flash"},
+        },
         "mechanics": {
             "godfather_appears_innocent": True,
             "reveal_role_on_death": True,
@@ -117,7 +124,6 @@ def handle_start_game(settings):
             }
         }
     
-
     # Create game instance
     game = MafiaGame(config)
 
@@ -501,18 +507,34 @@ def emit_game_state():
 def emit_game_event(event):
     """Emit a game event to all clients."""
     if event.event_type == "vote_result":
+        # Emit vote result using the center_display mechanism
         socketio.emit(
-            "vote_result",
+            "center_display",
             {
-                "context": event.description,
+                "active": True,
+                "is_action": False, # Treat it like a message/info display
+                "is_vote_result": True, # Add a flag for specific handling/styling
+                "message": event.description, # Use the description as the main content
+                "title": "Vote Result", # Add a title
                 "timestamp": datetime.now().isoformat(),
             },
-        )      
-  
+        )
+        # Also log it as a regular game event if needed
+        socketio.emit(
+            "game_event",
+            {
+                "event_type": event.event_type,
+                "description": event.description,
+                "public": event.public,
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
+        return # Prevent emitting the old vote_result event
+
     if event.event_type == "vote":
         # handled in emit_vote
         return
-         
+
     if event.event_type == "game_over":
         return emit_game_over()
 

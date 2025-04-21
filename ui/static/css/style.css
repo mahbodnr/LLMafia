@@ -88,7 +88,7 @@ body.night-mode {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    z-index: 100; /* Increase z-index */
+    z-index: 2147483638; 
     overflow-y: auto;
     transition: background-color 0.5s ease;
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.4); /* More prominent shadow */

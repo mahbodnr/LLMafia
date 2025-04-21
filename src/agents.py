@@ -49,12 +49,38 @@ class BaseAgent(ABC):
         # Generate response
         response = self.llm.invoke([self.system_message] + [HumanMessage(prompt)])
         
-        # Truncate response if needed
-        if len(response.content) > self.max_message_length:
-            return response.content[:self.max_message_length] + "..."
+        # DeepSeek Reason models:
+        if "<think>" in response.content:
+            inner_thought, content= response.content.split("<think>")
+            content = content.strip()
+            inner_thought = inner_thought.strip()
+        else:
+            # TODO: Handle other models
+            inner_thought = ""
+            content = response.content.strip()
         
-        return response.content
+        # Truncate response if needed
+        if len(content) > self.max_message_length:
+            return content[:self.max_message_length] + "..."
+        
+        return content, inner_thought
     
+    def _add_inner_thought(self, inner_thought: str, game_state: GameState):
+        """
+        Add inner thought to the player's memory.
+        
+        Args:
+            inner_thought: The inner thought to add
+            game_state: Current state of the game
+        """
+        if inner_thought:
+            memory_entry = {
+                "type": "inner_thought",
+                "round": game_state.current_round,
+                "phase": game_state.current_phase.name,
+                "description": inner_thought
+            }
+            self.player.memory.append(memory_entry)
         
     def update_memory(self, game_state: GameState):
         """
@@ -171,7 +197,9 @@ class BaseAgent(ABC):
             The agent's discussion message
         """
         prompt = self._create_day_discussion_prompt(game_state)
-        return self.generate_response(prompt)
+        response, inner_thought = self.generate_response(prompt)
+        self._add_inner_thought(inner_thought, game_state)
+        return response
         
     def generate_day_vote(self, game_state: GameState) -> str:
         """
@@ -184,8 +212,8 @@ class BaseAgent(ABC):
             The ID of the player to vote for
         """
         prompt = self._create_day_vote_prompt(game_state)
-        response = self.generate_response(prompt)
-        
+        response, inner_thought = self.generate_response(prompt)
+        self._add_inner_thought(inner_thought, game_state)
         # Extract the player name or ID from the response
         # This is a simple implementation and might need more robust parsing
         for player_id, player in game_state.alive_players.items():
@@ -212,8 +240,9 @@ class BaseAgent(ABC):
             The agent's discussion message
         """
         prompt = self._create_mafia_discussion_prompt(game_state)
-        return self.generate_response(prompt)
-    
+        response, inner_thought = self.generate_response(prompt)
+        self._add_inner_thought(inner_thought, game_state)
+        return response    
     
     def generate_night_action(self, game_state: GameState) -> Optional[Action]:
         """
@@ -230,8 +259,8 @@ class BaseAgent(ABC):
             return None
         
         prompt = self._create_night_action_prompt(game_state)
-        response = self.generate_response(prompt)
-        
+        response, inner_thought = self.generate_response(prompt)
+        self._add_inner_thought(inner_thought, game_state)
         # Extract the target player from the response
         target_id = None
         for player_id, player in game_state.alive_players.items():
@@ -283,8 +312,9 @@ class BaseAgent(ABC):
         prompt = self._create_reaction_prompt(message, game_state)
         
         # Generate reaction
-        response = self.generate_response(prompt)
-        
+        response, inner_thought = self.generate_response(prompt)
+        self._add_inner_thought(inner_thought, game_state)
+
         # Parse the response to get just "agree" or "disagree"
         if "agree" in response.lower() and "disagree" not in response.lower():
             return "agree"
@@ -301,6 +331,9 @@ class BaseAgent(ABC):
         
 This game starts with these roles:
 {self.config['roles']}
+
+The game has the following players:
+{"\n".join([f'{p_id}: {p.name}' for p_id, p in self.config['players'].items()])}
 
 Game Rules:
 - Villagers win if all Mafia are eliminated.
@@ -364,8 +397,7 @@ Your response should clearly indicate which player you're voting for by name. On
 
     def _create_mafia_discussion_prompt(self, game_state: GameState) -> str:
         """Create a prompt for mafia discussion during the night phase."""
-        prompt = f"""
-Mafia team members are: {', '.join([name for name, p in game_state.players.items() if p.team == PlayerRole.MAFIA])}.
+        prompt = f"""Mafia team members are: {', '.join([name for name, p in game_state.players.items() if p.team == PlayerRole.MAFIA])}.
 
 {self.format_game_state_for_prompt(game_state)}
 
@@ -375,7 +407,9 @@ It's now the night phase, and you are with your Mafia teammates. This is a priva
 Based on your role and the information you have, what would you like to discuss with your team?
 
 You should discuss your strategy for the night and the following days.
-You should also decide on a target to eliminate during the night phase based on your strategy (no elimination in day 1).
+{
+    "You should also decide on a target to eliminate during the night phase based on your strategy" if game_state.current_round > 1 else "No elimination takes place at this round."
+}
 
 Your response should be a message to your Mafia teammates, limited to {self.max_message_length} characters.
 """
@@ -458,7 +492,7 @@ class DebugAgent(BaseAgent):
     def generate_response(self, prompt: str) -> str:
         """Generate a response (echo the prompt for debug agent)."""
         time.sleep(self.sleep_time)
-        return f"Debug agent response"
+        return "Debug agent response", "Debug agent inner thought"
     
     def generate_day_vote(self, game_state: GameState) -> str:
         """Generate a debug vote."""
@@ -603,6 +637,28 @@ class GeminiAgent(BaseAgent):
                     "transport": "rest",
                     }
         return helicone_kwargs
+
+
+class OllamaAgent(BaseAgent):
+    """Agent implementation using Ollama models."""
+    
+    def initialize_llm(self):
+        """Initialize the Ollama language model."""
+        from langchain_ollama import ChatOllama
+        
+        model_name = self.config.get("model", "llama3")  # Default to llama3 or allow config override
+        self.llm = ChatOllama(
+            model=model_name, 
+            base_url=self.config.get("base_url", "http://localhost:11434"), 
+            temperature=0.7, 
+            **self._get_monitoring_kwargs()
+        )  
+
+    def _get_monitoring_kwargs(self) -> Dict[str, Any]:
+        """Get monitoring kwargs for the LLM."""
+        # Ollama typically runs locally, so no Helicone monitoring implementation is added
+        # This can be extended in the future if needed
+        return {}
     
     
 def create_agent(player: Player, provider: str, config: Dict[str, Any]) -> BaseAgent:
@@ -611,7 +667,7 @@ def create_agent(player: Player, provider: str, config: Dict[str, Any]) -> BaseA
     
     Args:
         player: The player this agent controls
-        provider: The LLM provider to use ('openai', 'anthropic', or 'google')
+        provider: The LLM provider to use ('openai', 'anthropic', 'google', 'ollama', or 'debug')
         config: Configuration settings for the agent
         
     Returns:
@@ -623,6 +679,8 @@ def create_agent(player: Player, provider: str, config: Dict[str, Any]) -> BaseA
         return AnthropicAgent(player, config)
     elif provider.lower() == 'google':
         return GeminiAgent(player, config)
+    elif provider.lower() == 'ollama':
+        return OllamaAgent(player, config)
     elif provider.lower() == 'debug':
         return DebugAgent(player, config)
     else:

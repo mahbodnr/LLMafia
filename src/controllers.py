@@ -154,6 +154,7 @@ class GameController:
             )
         
         game_config = {
+            "players": self.game_state.players,
             "roles": self.config.get("roles", {}),
             "game_id": self.game_id,
         }
@@ -164,10 +165,10 @@ class GameController:
         llm_providers = self.config.get(
             "llm_providers",
             {
-                # "openai": {"model": "gpt-4o-mini"},
-                "debug": {"model": "debug"},
-                # "anthropic": {"model": "claude-3-7-sonnet-latest"},
-                # "google": {"model": "gemini-2.0-flash-lite"},
+                "openai": {"model": "gpt-4o-mini"},
+                # "debug": {"model": "debug"},
+                "anthropic": {"model": "claude-3-5-sonnet-latest"},
+                "google": {"model": "gemini-2.0-flash"},
             },
         )
 

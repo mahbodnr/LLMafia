@@ -134,11 +134,16 @@ function initializeSocket() {
 
     socket.on('center_display', (data) => {
         console.log("Received center display update:", data);
+        const centerContent = centerDisplay.querySelector('.center-content'); // Get the content container
+
         if (data.active) {
             // Force update UI regardless of previous state
             centerDisplay.style.display = 'flex';
-            
-            // Check if this is a night action or a speaker message
+
+            // Clear previous content
+            centerContent.innerHTML = '';
+
+            // Check if this is a night action, vote result, or a speaker message
             if (data.is_action) {
                 // This is a night action
                 const centerContent = centerDisplay.querySelector('.center-content');
@@ -210,31 +215,62 @@ function initializeSocket() {
                 `;
                 
                 // Add event listener to continue button for actions
-                document.getElementById('continue-action-button').addEventListener('click', () => {
-                    socket.emit('continue_action');
-                });
-                
+                const actionContinueButton = document.getElementById('continue-action-button');
+                if (actionContinueButton) {
+                    actionContinueButton.addEventListener('click', () => {
+                        socket.emit('continue_action');
+                    });
+                } else {
+                    console.error("Could not find action continue button.");
+                }
+
                 nextPhaseButton.disabled = true;
+            } else if (data.is_vote_result) {
+                // This is a vote result
+                centerContent.innerHTML = `
+                    <div class="vote-result-display" style="padding: 20px; border-radius: 5px; background-color: rgba(108, 117, 125, 0.1); border-left: 5px solid #6c757d;">
+                        <h4 style="color: #6c757d; display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                            <i class="fas fa-gavel"></i> ${data.title || 'Vote Result'}
+                        </h4>
+                        <p style="margin-bottom: 20px;">${data.message || 'No vote details available.'}</p>
+                        <div class="text-center">
+                            <button id="vote-result-continue-button" class="btn btn-secondary">OK</button>
+                        </div>
+                    </div>
+                `;
+
+                // Add event listener to the OK button for vote results
+                const voteResultContinueButton = document.getElementById('vote-result-continue-button');
+                if (voteResultContinueButton) {
+                    voteResultContinueButton.addEventListener('click', () => {
+                        centerDisplay.style.display = 'none'; // Just hide the display
+                        nextPhaseButton.disabled = false; // Re-enable next phase button
+                    });
+                } else {
+                    console.error("Could not find vote result continue button.");
+                }
+                nextPhaseButton.disabled = true; // Disable next phase until OK is clicked
+
             } else {
                 // This is a regular speaker message
-                const centerContent = centerDisplay.querySelector('.center-content'); // Get the content container
-
-                // Set the HTML for the speaker display, ensuring IDs match original elements if possible
+                // Set the HTML for the speaker display
                 centerContent.innerHTML = `
-                    <h4 id="current-speaker-name">${data.player_name || 'Speaker'}</h4>
-                    <p id="current-speaker-message">${data.message || 'No message'}</p>
-                    <div class="text-center mt-3">
-                         <button id="continue-button" class="btn btn-primary">Continue</button>
-                     </div>
+                    <div class="speaker-display" style="padding: 20px;">
+                        <h4 id="current-speaker-name" style="margin-bottom: 15px;">${data.player_name || 'Speaker'}</h4>
+                        <p id="current-speaker-message" style="margin-bottom: 20px;">${data.message || 'No message'}</p>
+                        <div class="text-center">
+                            <button id="continue-speaker-button" class="btn btn-primary">Continue</button>
+                        </div>
+                    </div>
                 `;
 
                 // Re-find the continue button *after* setting innerHTML
-                const speakerContinueButton = document.getElementById('continue-button');
+                const speakerContinueButton = document.getElementById('continue-speaker-button');
                 if (speakerContinueButton) {
-                     // Remove previous listener if any (safer) and add the correct one
-                     speakerContinueButton.removeEventListener('click', continueAfterSpeaker); // Remove old listener if exists
-                     speakerContinueButton.addEventListener('click', continueAfterSpeaker); // Add the correct listener
-                     speakerContinueButton.disabled = false;
+                    // Remove previous listener if any (safer) and add the correct one
+                    speakerContinueButton.removeEventListener('click', continueAfterSpeaker); // Remove old listener if exists
+                    speakerContinueButton.addEventListener('click', continueAfterSpeaker); // Add the correct listener
+                    speakerContinueButton.disabled = false;
                 } else {
                     console.error("Could not find speaker continue button after update.");
                 }
@@ -244,8 +280,11 @@ function initializeSocket() {
         } else {
             // Hide center display
             centerDisplay.style.display = 'none';
-            continueButton.disabled = true;
-            nextPhaseButton.disabled = false;
+            // Ensure next phase button is enabled when display is inactive
+            // Check game state if needed, but generally should be enabled if nothing is blocking
+            if (!gameState.waitingForContinue && !gameState.waitingForMessages) {
+                 nextPhaseButton.disabled = false;
+            }
         }
     });
 
@@ -273,11 +312,14 @@ function initializeSocket() {
         }
     });
 
+    // REMOVE the old vote_result handler
+    /*
     socket.on('vote_result', (result) => {
         console.log("Received vote result:", result);
         gameState.voteResult = result;
         showVoteResult(result);
     });
+    */
 }
 
 // Set up event listeners for UI elements
@@ -285,8 +327,8 @@ function setupEventListeners() {
     startGameButton.addEventListener('click', startGame);
     nextPhaseButton.addEventListener('click', () => {
         nextPhase();
-        // Hide vote result when moving to next phase
-        hideVoteResult();
+        // REMOVE hideVoteResult call
+        // hideVoteResult();
     });
     resetGameButton.addEventListener('click', resetGame);
     downloadTranscriptButton.addEventListener('click', downloadTranscript);
@@ -294,9 +336,10 @@ function setupEventListeners() {
         gameResultsModal.hide();
         resetGame();
     });
-    
-    // Add continue button event listener
-    continueButton.addEventListener('click', continueAfterSpeaker);
+
+    // REMOVE the specific continueButton listener here if it's only for speakers
+    // continueButton.addEventListener('click', continueAfterSpeaker);
+    // Event listeners for continue buttons are now added dynamically within the center_display handler
 
     // Update mafia count options when player count changes
     playerCountSelect.addEventListener('change', updateMafiaCountOptions);
@@ -366,7 +409,7 @@ function nextPhase() {
     console.log("Moving to next phase");
     socket.emit('next_phase');
     // Hide any vote result display
-    hideVoteResult();
+    // REMOVE hideVoteResult();
 }
 
 // Reset the game
@@ -414,7 +457,7 @@ function resetGame() {
     continueButton.disabled = true;
     
     // Hide vote result if visible
-    hideVoteResult();
+    // REMOVE hideVoteResult();
     
     // Reset to day mode styling
     const body = document.body;
@@ -1139,77 +1182,6 @@ function addLogEntry(message, type = 'info') {
     
     // Scroll to bottom
     gameLog.scrollTop = gameLog.scrollHeight;
-}
-
-// Show vote result on screen
-function showVoteResult(result) {
-    // Hide any existing vote result first
-    hideVoteResult();
-    
-    // Create vote result container if it doesn't exist
-    let voteResultContainer = document.getElementById('vote-result-container');
-    if (!voteResultContainer) {
-        voteResultContainer = document.createElement('div');
-        voteResultContainer.id = 'vote-result-container';
-        voteResultContainer.className = 'vote-result-overlay';
-        document.body.appendChild(voteResultContainer);
-    }
-    
-    // Create vote result content
-    const voteResultContent = document.createElement('div');
-    voteResultContent.className = 'vote-result-content animate__animated animate__fadeIn';
-    voteResultContent.innerHTML = `
-        <div class="vote-result-header">
-            <h3>Vote Result</h3>
-            <button type="button" class="btn-close" aria-label="Close"></button>
-        </div>
-        <div class="vote-result-body">
-            ${result.context}
-        </div>
-    `;
-    
-    // Add close button functionality
-    const closeButton = voteResultContent.querySelector('.btn-close');
-    closeButton.addEventListener('click', hideVoteResult);
-    
-    // Add to container
-    voteResultContainer.appendChild(voteResultContent);
-    
-    // Show container
-    voteResultContainer.style.display = 'flex';
-    
-    // Add to game log
-    addLogEntry(`Vote Result: ${result.context}`, 'warning');
-    
-    // Auto-hide after 10 seconds
-    setTimeout(() => {
-        if (document.getElementById('vote-result-container')) {
-            hideVoteResult();
-        }
-    }, 10000);
-}
-
-// Hide vote result
-function hideVoteResult() {
-    const voteResultContainer = document.getElementById('vote-result-container');
-    if (voteResultContainer) {
-        // Animate before removing
-        const voteResultContent = voteResultContainer.querySelector('.vote-result-content');
-        if (voteResultContent) {
-            voteResultContent.classList.remove('animate__fadeIn');
-            voteResultContent.classList.add('animate__fadeOut');
-            
-            // Remove after animation completes
-            setTimeout(() => {
-                if (voteResultContainer.parentNode) {
-                    voteResultContainer.parentNode.removeChild(voteResultContainer);
-                }
-            }, 500);
-        } else {
-            // No animation element, remove immediately
-            voteResultContainer.parentNode.removeChild(voteResultContainer);
-        }
-    }
 }
 
 // Show game results
