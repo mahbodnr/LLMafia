@@ -1025,7 +1025,7 @@ function drawVoteArrow(voterId, targetId) {
     svg.style.width = "100%";
     svg.style.height = "100%";
     svg.style.pointerEvents = "none";
-    svg.style.zIndex = "1000";
+    svg.style.zIndex = "100";
     
     // Calculate container-relative positions
     const container = document.getElementById('players-container');

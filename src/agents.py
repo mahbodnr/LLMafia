@@ -50,10 +50,10 @@ class BaseAgent(ABC):
         response = self.llm.invoke([self.system_message] + [HumanMessage(prompt)])
         
         # DeepSeek Reason models:
-        if "<think>" in response.content:
-            inner_thought, content= response.content.split("<think>")
+        if "</think>" in response.content:
+            inner_thought, content= response.content.split("</think>")
             content = content.strip()
-            inner_thought = inner_thought.strip()
+            inner_thought = inner_thought.replace("<think>", "").strip()
         else:
             # TODO: Handle other models
             inner_thought = ""
@@ -61,7 +61,7 @@ class BaseAgent(ABC):
         
         # Truncate response if needed
         if len(content) > self.max_message_length:
-            return content[:self.max_message_length] + "..."
+            content = content[:self.max_message_length] + "..."
         
         return content, inner_thought
     
