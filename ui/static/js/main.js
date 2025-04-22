@@ -1271,27 +1271,73 @@ function showGameResults(result) {
 
 // Download game transcript
 function downloadTranscript() {
-    socket.emit('get_transcript', (transcript) => {
-        // Create a blob with the transcript data
-        const blob = new Blob([JSON.stringify(transcript, null, 2)], { type: 'application/json' });
+    // Show loading indicator
+    addLogEntry("Requesting transcript...", "info");
+    console.log("Requesting transcript...");
+    
+    socket.emit('get_transcript', (response) => {
+        console.log("Received transcript response:", response ? 
+            (typeof response === 'object' ? `${Object.keys(response).length} keys` : typeof response) 
+            : 'undefined');
         
-        // Create a download link
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `mafia_game_transcript_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+        // Check for error in response
+        if (response && response.error) {
+            console.error("Error from server:", response.error);
+            addLogEntry(`Failed to download transcript: ${response.error}`, "error");
+            alert(`Error: ${response.error}`);
+            return;
+        }
         
-        // Trigger download
-        document.body.appendChild(a);
-        a.click();
+        // Check if we have valid data
+        if (!response || typeof response === 'undefined') {
+            console.error("Received empty transcript data");
+            addLogEntry("Failed to download transcript: Empty data received", "error");
+            alert("Error: Could not generate transcript - empty data received");
+            return;
+        }
         
-        // Clean up
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }, 0);
+        try {
+            // Log what we're working with for debugging
+            console.log("Transcript response type:", typeof response);
+            if (typeof response === 'object') {
+                console.log("Transcript keys:", Object.keys(response));
+            }
+            
+            // Ensure we have valid JSON data by stringifying
+            const jsonData = JSON.stringify(response, null, 2);
+            console.log("Transcript data processed, size:", jsonData.length);
+            
+            // Create a blob with the transcript data
+            const blob = new Blob([jsonData], { type: 'application/json' });
+            
+            // Create a download link
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+            a.download = `mafia_game_transcript_${timestamp}.json`;
+            
+            // Trigger download
+            document.body.appendChild(a);
+            a.click();
+            
+            // Log success
+            addLogEntry("Transcript downloaded successfully", "success");
+            
+            // Clean up
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                console.log("Transcript download complete");
+            }, 100);
+        } catch (e) {
+            console.error("Error processing transcript data:", e);
+            addLogEntry(`Error processing transcript data: ${e.message}`, "error");
+            alert(`Error processing transcript data: ${e.message}`);
+        }
     });
 }
+
 // Function to show loading message during phase transition
 function showPhaseLoadingMessage() {
     // Get the center display and content
