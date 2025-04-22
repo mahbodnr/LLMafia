@@ -748,24 +748,103 @@ function displayPlayerMemory(data) {
         return;
     }
     
+    // Log what we received to help debugging
+    console.log(`Displaying ${data.memory.length} memory entries for ${data.name}`);
+    console.log("Memory entries types:", data.memory.map(entry => entry.type));
+    
+    // Track memory entry filters
+    const filterThoughts = document.getElementById('filter-thoughts');
+    const filterMessages = document.getElementById('filter-messages');
+    const filterVotes = document.getElementById('filter-votes');
+    const filterActions = document.getElementById('filter-actions');
+    
+    // Add event listeners to filters if they don't exist
+    if (!filterThoughts.dataset.listenerAdded) {
+        filterThoughts.addEventListener('change', () => refreshMemoryDisplay(data));
+        filterThoughts.dataset.listenerAdded = "true";
+    }
+    if (!filterMessages.dataset.listenerAdded) {
+        filterMessages.addEventListener('change', () => refreshMemoryDisplay(data));
+        filterMessages.dataset.listenerAdded = "true";
+    }
+    if (!filterVotes.dataset.listenerAdded) {
+        filterVotes.addEventListener('change', () => refreshMemoryDisplay(data));
+        filterVotes.dataset.listenerAdded = "true";
+    }
+    if (!filterActions.dataset.listenerAdded) {
+        filterActions.addEventListener('change', () => refreshMemoryDisplay(data));
+        filterActions.dataset.listenerAdded = "true";
+    }
+    
+    // Store the data for filter refreshing
+    memoryContent.dataset.playerMemory = JSON.stringify(data);
+    
+    // Display the memory
+    refreshMemoryDisplay(data);
+}
+
+// Refresh the memory display based on current filters
+function refreshMemoryDisplay(data) {
+    // If data is a string (from dataset), parse it
+    if (typeof data === 'string') {
+        data = JSON.parse(data);
+    }
+    
+    // Get filter states
+    const showThoughts = document.getElementById('filter-thoughts').checked;
+    const showMessages = document.getElementById('filter-messages').checked;
+    const showVotes = document.getElementById('filter-votes').checked;
+    const showActions = document.getElementById('filter-actions').checked;
+    
     // Create memory timeline
     let html = '<div class="memory-timeline">';
     
-    data.memory.forEach(entry => {
-        // Check memory entry type
-        if (entry.type === "event") {
-            html += createEventMemoryEntry(entry);
-        } else if (entry.type === "inner_thought") {
+    // Filter entries first
+    const filteredEntries = data.memory.filter(entry => {
+        switch (entry.type) {
+            case 'inner_thought': return showThoughts;
+            case 'message': return showMessages;
+            case 'vote': return showVotes;
+            case 'action': return showActions;
+            default: return false;
+        }
+    });
+    
+    // Sort entries by round (ensure numeric comparison) and phase
+    filteredEntries.sort((a, b) => {
+        const roundA = Number(a.round) || 0;
+        const roundB = Number(b.round) || 0;
+        if (roundA !== roundB) return roundA - roundB;
+        return (a.phase || "").localeCompare(b.phase || "");
+    });
+    
+    // Track phases to add separators
+    let currentPhase = "";
+    let currentRound = -1; // Use -1 to ensure first round is always displayed
+    
+    // Process entries, adding phase separators as needed
+    filteredEntries.forEach(entry => {
+        // Ensure round is a number for consistent comparison
+        const entryRound = Number(entry.round) || 0;
+        
+        // Always add a separator for the first entry
+        if (currentRound === -1 || entryRound !== currentRound || entry.phase !== currentPhase) {
+            currentPhase = entry.phase;
+            currentRound = entryRound;
+            // For round 0, display as "Setup" instead
+            const displayRound = entryRound === 0 ? "Setup" : entryRound;
+            html += createPhaseChangeSeparator(displayRound, entry.phase);
+        }
+        
+        // Process entry based on type
+        if (entry.type === "inner_thought") {
             html += createInnerThoughtMemoryEntry(entry);
         } else if (entry.type === "message") {
             html += createMessageMemoryEntry(entry, data.name);
-        } else {
-            // Fallback for unknown types
-            html += createEventMemoryEntry({
-                round: entry.round,
-                phase: entry.phase,
-                description: "Unknown memory entry type"
-            });
+        } else if (entry.type === "vote") {
+            html += createVoteMemoryEntry(entry, data.name);
+        } else if (entry.type === "action") {
+            html += createActionMemoryEntry(entry);
         }
     });
     
@@ -773,16 +852,16 @@ function displayPlayerMemory(data) {
     memoryContent.innerHTML = html;
 }
 
-// Create HTML for an event memory entry
-function createEventMemoryEntry(entry) {
+// Create HTML for a phase change separator
+function createPhaseChangeSeparator(round, phase) {
+    // Handle round 0 as "Setup"
+    const displayRound = round === 0 || round === "0" ? "Setup" : `Round ${round}`;
+    
     return `
-        <div class="memory-entry memory-event fade-in">
-            <div class="memory-entry-header">
-                <span class="memory-round">Round ${entry.round}</span>
-                <span class="memory-phase">${entry.phase}</span>
-                <span class="memory-type-badge event-badge">Event</span>
-            </div>
-            <div class="memory-entry-content">${entry.description}</div>
+        <div class="phase-separator">
+            <div class="phase-line"></div>
+            <div class="phase-label">${displayRound} - ${phase}</div>
+            <div class="phase-line"></div>
         </div>
     `;
 }
@@ -822,6 +901,77 @@ function createMessageMemoryEntry(entry, playerName) {
                 <div class="message-sender">${entry.sender}</div>
                 <div class="memory-entry-content">${entry.content}</div>
             </div>
+        </div>
+    `;
+}
+
+// Create HTML for a vote memory entry
+function createVoteMemoryEntry(entry, playerName) {
+    // Debug log for votes
+    console.log("Creating vote entry:", entry);
+    
+    const isVoter = entry.voter === playerName;
+    const voteClass = isVoter ? 'vote-from' : 'vote-to';
+    const voteIcon = isVoter ? 'fa-arrow-circle-right' : 'fa-arrow-circle-left';
+    const voteColor = isVoter ? '#dc3545' : '#007bff'; // Red for outgoing, blue for incoming
+    
+    return `
+        <div class="memory-entry memory-vote ${voteClass} fade-in">
+            <div class="memory-entry-header">
+                <span class="memory-round">Round ${entry.round}</span>
+                <span class="memory-phase">${entry.phase}</span>
+                <span class="memory-type-badge vote-badge" style="background-color: ${voteColor}">Vote</span>
+            </div>
+            <div class="vote-details">
+                <div class="vote-action">
+                    <span class="voter">${entry.voter}</span>
+                    <i class="fas ${voteIcon}" style="margin: 0 10px; color: ${voteColor};"></i>
+                    <span class="target">${entry.target}</span>
+                </div>
+                ${entry.reason ? `<div class="vote-reason">${entry.reason}</div>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+// Create HTML for an action memory entry
+function createActionMemoryEntry(entry) {
+    // Debug log for actions
+    console.log("Creating action entry:", entry);
+    
+    // Different styling for different action types
+    let actionIcon, actionColor;
+    
+    switch(entry.action_type) {
+        case "kill":
+            actionIcon = "fa-skull";
+            actionColor = "#dc3545"; // Red
+            break;
+        case "protect":
+            actionIcon = "fa-shield-alt";
+            actionColor = "#28a745"; // Green
+            break;
+        case "investigate":
+            actionIcon = "fa-search";
+            actionColor = "#17a2b8"; // Info blue
+            break;
+        default:
+            actionIcon = "fa-cogs";
+            actionColor = "#6c757d"; // Gray
+    }
+    
+    return `
+        <div class="memory-entry memory-action fade-in" style="border-left-color: ${actionColor};">
+            <div class="memory-entry-header">
+                <span class="memory-round">Round ${entry.round}</span>
+                <span class="memory-phase">${entry.phase}</span>
+                <span class="memory-type-badge action-badge" style="background-color: ${actionColor}">Action</span>
+            </div>
+            <div class="action-details">
+                <i class="fas ${actionIcon}" style="margin-right: 10px; color: ${actionColor};"></i>
+                <span>${entry.actor} used ${entry.action_type} on ${entry.target}</span>
+            </div>
+            ${entry.result ? `<div class="action-result">${entry.result}</div>` : ''}
         </div>
     `;
 }

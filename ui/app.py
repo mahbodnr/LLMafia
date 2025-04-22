@@ -599,11 +599,166 @@ def handle_get_player_memory(player_id):
         player = game_manager.game.game_state.players[player_id]
         memory_entries = []
         
-        # Convert memory entries to serializable format
+        # Get player name for easier reference
+        player_name = player.name
+        
+        # Get current game round for fallback
+        current_game_round = game_manager.game.game_state.current_round
+        logger.info(f"Current game round: {current_game_round}")
+        
+        # Extract base memory entries (messages and inner thoughts)
         if hasattr(player, "memory") and player.memory:
             for entry in player.memory:
-                memory_entries.append(format_memory_entry(entry))
-                
+                processed_entry = format_memory_entry(entry)
+                # Only keep inner thoughts and messages from the player
+                if processed_entry["type"] == "inner_thought" or (
+                    processed_entry["type"] == "message" and 
+                    processed_entry.get("sender") == player_name
+                ):
+                    memory_entries.append(processed_entry)
+        
+        # Add vote information (both from and to this player)
+        try:
+            # Try different possible attribute names
+            votes = None
+            for attr_name in ["votes", "all_votes"]:
+                if hasattr(game_manager.game.game_state, attr_name):
+                    votes = getattr(game_manager.game.game_state, attr_name)
+                    break
+            
+            if votes:
+                logger.info(f"Found {len(votes)} votes in game state")
+                for vote in votes:
+                    try:
+                        # Debug log to see the vote object
+                        debug_attrs = {
+                            key: getattr(vote, key, None) 
+                            for key in ["voter_id", "target_id", "round", "day", "phase"]
+                            if hasattr(vote, key)
+                        }
+                        logger.info(f"Vote attributes: {debug_attrs}")
+                        
+                        # Get voter and target info safely
+                        voter_id = getattr(vote, "voter_id", None)
+                        target_id = getattr(vote, "target_id", None)
+                        
+                        if voter_id and target_id:
+                            voter_name = game_manager.game.game_state.players[voter_id].name
+                            target_name = game_manager.game.game_state.players[target_id].name
+                            
+                            # Get round information with better fallbacks
+                            vote_round = None
+                            # Try different attributes that might contain round info
+                            for round_attr in ["round", "day"]:
+                                if hasattr(vote, round_attr):
+                                    vote_round = getattr(vote, round_attr)
+                                    if vote_round is not None:
+                                        break
+                            
+                            # If still no round, use current game round
+                            if vote_round is None:
+                                vote_round = current_game_round
+                            
+                            # Get phase information with fallback
+                            vote_phase = "Voting"
+                            if hasattr(vote, "phase") and getattr(vote, "phase") is not None:
+                                phase_obj = getattr(vote, "phase")
+                                if hasattr(phase_obj, "name"):
+                                    vote_phase = phase_obj.name
+                                else:
+                                    vote_phase = str(phase_obj)
+                            
+                            # Only include votes involving this player
+                            if voter_name == player_name or target_name == player_name:
+                                vote_entry = {
+                                    "type": "vote",
+                                    "round": vote_round,
+                                    "phase": vote_phase,
+                                    "voter": voter_name,
+                                    "target": target_name,
+                                    "reason": getattr(vote, "reason", None)
+                                }
+                                memory_entries.append(vote_entry)
+                                logger.info(f"Added vote in round {vote_round}, phase {vote_phase}: {voter_name} -> {target_name}")
+                    except Exception as ve:
+                        logger.error(f"Error processing vote: {ve}")
+                        continue
+        except Exception as e:
+            logger.error(f"Error retrieving votes: {e}")
+        
+        # Add action information (only actions performed by this player)
+        try:
+            # Try different possible attribute names
+            actions = None
+            for attr_name in ["actions", "all_actions", "night_actions"]:
+                if hasattr(game_manager.game.game_state, attr_name):
+                    actions = getattr(game_manager.game.game_state, attr_name)
+                    break
+            
+            if actions:
+                logger.info(f"Found {len(actions)} actions in game state")
+                for action in actions:
+                    try:
+                        # Debug log to see the action object
+                        debug_attrs = {
+                            key: getattr(action, key, None) 
+                            for key in ["actor_id", "target_id", "round", "day", "phase", "action_type"]
+                            if hasattr(action, key)
+                        }
+                        logger.info(f"Action attributes: {debug_attrs}")
+                        
+                        # Get actor and target info safely
+                        actor_id = getattr(action, "actor_id", None)
+                        target_id = getattr(action, "target_id", None)
+                        
+                        if actor_id and target_id:
+                            actor_name = game_manager.game.game_state.players[actor_id].name
+                            target_name = game_manager.game.game_state.players[target_id].name
+                            
+                            # Get round information with better fallbacks
+                            action_round = None
+                            # Try different attributes that might contain round info
+                            for round_attr in ["round", "day"]:
+                                if hasattr(action, round_attr):
+                                    action_round = getattr(action, round_attr)
+                                    if action_round is not None:
+                                        break
+                            
+                            # If still no round, use current game round
+                            if action_round is None:
+                                action_round = current_game_round
+                            
+                            # Get phase information with fallback
+                            action_phase = "Night Action"
+                            if hasattr(action, "phase") and getattr(action, "phase") is not None:
+                                phase_obj = getattr(action, "phase")
+                                if hasattr(phase_obj, "name"):
+                                    action_phase = phase_obj.name
+                                else:
+                                    action_phase = str(phase_obj)
+                            
+                            # Only include actions performed by this player
+                            if actor_name == player_name:
+                                action_entry = {
+                                    "type": "action",
+                                    "round": action_round,
+                                    "phase": action_phase,
+                                    "action_type": getattr(action, "action_type", "unknown"),
+                                    "actor": actor_name,
+                                    "target": target_name,
+                                    "result": getattr(action, "result", None)
+                                }
+                                memory_entries.append(action_entry)
+                                logger.info(f"Added action in round {action_round}, phase {action_phase}: {actor_name} {action_entry['action_type']} {target_name}")
+                    except Exception as ae:
+                        logger.error(f"Error processing action: {ae}")
+                        continue
+        except Exception as e:
+            logger.error(f"Error retrieving actions: {e}")
+        
+        # Sort entries by round and phase
+        memory_entries.sort(key=lambda x: (x.get("round", 0), x.get("phase", "")))
+        
         # Get agent's model name
         agent = game_manager.game.game_controller.agents[player_id]
         model_name = getattr(agent, "model_name", "Unknown")
@@ -621,6 +776,8 @@ def handle_get_player_memory(player_id):
                 "memory": memory_entries,
             },
         )
+        logger.info(f"Sent {len(memory_entries)} memory entries for {player.name}")
+        
     except Exception as e:
         logger.error(f"Error retrieving player memory: {e}", exc_info=True)
         emit("player_memory", {"player_id": player_id, "memory": [], "error": str(e)})

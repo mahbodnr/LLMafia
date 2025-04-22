@@ -327,13 +327,14 @@ class BaseAgent(ABC):
     
     def _create_system_prompt(self) -> str:
         """Create a system prompt for the agent."""
+        nl = '\n'
         prompt = f"""You are {self.player.name} ({self.player.id}). You are playing a Mafia (Werewolf) game as a {self.player.role.name}.
         
 This game starts with these roles:
 {self.config['roles']}
 
 The game has the following players:
-{"\n".join([f'{p_id}: {p.name}' for p_id, p in self.config['players'].items()])}
+{nl.join([f'{p_id}: {p.name}' for p_id, p in self.config['players'].items()])}
 
 Game Rules:
 - Villagers win if all Mafia are eliminated.
