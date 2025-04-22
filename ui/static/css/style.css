@@ -617,6 +617,18 @@ body.night-mode {
     margin-left: 0.5rem;
 }
 
+/* Transcript upload styling */
+.transcript-upload {
+    background-color: rgba(0, 123, 255, 0.05);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 15px;
+}
+
+.night-mode .transcript-upload {
+    background-color: rgba(13, 110, 253, 0.15);
+}
+
 /* Responsive Adjustments */
 @media (max-width: 992px) {
     .control-panel .card, .game-display .card, .game-log .card {

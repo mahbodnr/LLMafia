@@ -6,6 +6,7 @@ import os
 import json
 import logging
 import uuid
+import tempfile
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable, Union
 
@@ -51,6 +52,9 @@ class GameManager:
         self.phase_messages = []  # Store messages generated during phase execution
         self.night_actions_queue = []  # Store night actions queue
         self.current_action_index = 0  # Track current action being displayed
+        # Add transcript storage
+        self.uploaded_transcript = None
+        self.transcript_path = None
 
     def reset(self):
         """Reset the game manager state."""
@@ -60,6 +64,7 @@ class GameManager:
         self.phase_messages = []
         self.night_actions_queue = []
         self.current_action_index = 0
+        # Don't reset transcript - we might want to replay
 
     def start_game(self, settings: Dict[str, Any]) -> bool:
         """
@@ -85,19 +90,65 @@ class GameManager:
             # Create game config
             config = self._create_game_config(settings, roles)
             
-            # Create game instance
-            self.game = MafiaGame(config)
-            
             # Generate player names
             player_names = generate_player_names(settings["playerCount"])
             
-            # Initialize game
-            self.game.initialize_game(player_names)
-            
+            # Check if we should use an uploaded transcript
+            if settings.get("useTranscript", False) and self.uploaded_transcript:
+                logger.info("Starting game from uploaded transcript")
+                
+                # Create game instance using transcript
+                self.game = MafiaGame(transcript=self.uploaded_transcript)
+                
+                # Initialize game
+                self.game.initialize_game(player_names)
+            else:
+                # Start a new game from scratch
+                logger.info("Starting fresh game")
+                
+                # Create game instance
+                self.game = MafiaGame(config)
+                
+                # Initialize game
+                self.game.initialize_game(player_names)
+
             return True
         except Exception as e:
             logger.error(f"Error starting game: {e}", exc_info=True)
             return False
+    
+    def save_uploaded_transcript(self, transcript_data: Dict[str, Any]) -> bool:
+        """Save uploaded transcript data."""
+        try:
+            # Store in memory
+            self.uploaded_transcript = transcript_data
+            
+            # Also save to temporary file for backup
+            fd, self.transcript_path = tempfile.mkstemp(suffix='.json', prefix='mafia_transcript_')
+            with os.fdopen(fd, 'w') as f:
+                json.dump(transcript_data, f)
+            
+            logger.info(f"Transcript saved to {self.transcript_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving transcript: {e}", exc_info=True)
+            self.uploaded_transcript = None
+            self.transcript_path = None
+            return False
+    
+    def clear_uploaded_transcript(self):
+        """Clear uploaded transcript data."""
+        self.uploaded_transcript = None
+        
+        # Remove temporary file if it exists
+        if self.transcript_path and os.path.exists(self.transcript_path):
+            try:
+                os.remove(self.transcript_path)
+            except Exception as e:
+                logger.error(f"Error removing transcript file: {e}")
+        
+        self.transcript_path = None
+        logger.info("Transcript cleared")
     
     def _create_role_distribution(self, settings: Dict[str, Any]) -> Dict[str, int]:
         """Create role distribution based on settings."""
@@ -169,7 +220,7 @@ class GameManager:
         if not self.game:
             return
             
-        logger.info("Executing phase in background")
+        logger.info(f"Executing phase {self.game.game_state.current_phase.name} in background")
         
         # Check if game is over
         if self.game.game_controller.check_game_over():
@@ -582,6 +633,47 @@ def handle_check_new_messages(callback=None):
     # This is just a placeholder response
     if callback:
         callback(False)  # Indicate no new messages available
+
+
+@socketio.on("upload_transcript")
+def handle_transcript_upload(data):
+    """Handle transcript file upload."""
+    try:
+        logger.info(f"Received transcript upload: {data.get('filename', 'unknown')}")
+        
+        # Validate transcript data
+        if not data.get('content'):
+            logger.error("No content in uploaded transcript")
+            emit("transcript_upload_response", {
+                "success": False,
+                "error": "No content in uploaded transcript"
+            })
+            return
+            
+        # Save transcript data
+        if game_manager.save_uploaded_transcript(data['content']):
+            emit("transcript_upload_response", {
+                "success": True,
+                "filename": data.get('filename', 'unknown')
+            })
+        else:
+            emit("transcript_upload_response", {
+                "success": False,
+                "error": "Failed to save transcript"
+            })
+            
+    except Exception as e:
+        logger.error(f"Error handling transcript upload: {e}", exc_info=True)
+        emit("transcript_upload_response", {
+            "success": False,
+            "error": f"Error: {str(e)}"
+        })
+
+
+@socketio.on("clear_transcript")
+def handle_clear_transcript():
+    """Handle clearing uploaded transcript."""
+    game_manager.clear_uploaded_transcript()
 
 
 # Helper functions

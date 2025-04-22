@@ -66,7 +66,7 @@ class GameController:
         # generate a game id:
         self.game_id = str(uuid.uuid4())
         self.config["game_id"] = self.game_id
-        
+
         # Get role distribution from config
         role_distribution = self.config.get(
             "roles",
@@ -145,20 +145,20 @@ class GameController:
         """Initialize agents for all players."""
         # Get agent settings from config
         agent_config = self.config.get(
-                "agent",
-                {
-                    "verbosity": "elaborate",
-                    "max_message_length": 200,
-                    "memory_limit": None,
-                },
-            )
-        
+            "agent",
+            {
+                "verbosity": "elaborate",
+                "max_message_length": 200,
+                "memory_limit": None,
+            },
+        )
+
         game_config = {
             "players": self.game_state.players,
             "roles": self.config.get("roles", {}),
             "game_id": self.game_id,
         }
-        
+
         moitoring_config = self.config.get("monitoring", {})
 
         # Get LLM provider settings
@@ -180,11 +180,15 @@ class GameController:
             provider_config = llm_providers.get(provider, {})
 
             # Merge provider config with agent config
-            combined_config = {**agent_config, **game_config, **provider_config, **moitoring_config}
+            combined_config = {
+                **agent_config,
+                **game_config,
+                **provider_config,
+                **moitoring_config,
+            }
 
             # Create agent
             self.agents[player_id] = create_agent(player, provider, combined_config)
-
 
     def register_callback(self, event_type: str, callback):
         """
@@ -278,10 +282,10 @@ class GameController:
 
         # update agent memories
         controller._update_agent_memories()
-        
+
         # Mark phase as completed
         self.phase_completed = True
-    
+
     def advance_phase(self):
         """Advance to the next game phase."""
         current_phase = self.game_state.current_phase
@@ -307,11 +311,11 @@ class GameController:
                 next_phase = GamePhase.NIGHT_MAFIA_DISCUSSION
             elif next_phase == GamePhase.NIGHT_ACTION:
                 next_phase = GamePhase.DAY_DISCUSSION
-                
+
         # reverse the order of the alive players for the next phase
         if self.game_state.current_round > 1 and next_phase == GamePhase.DAY_DISCUSSION:
             self.game_state.reverse_players_order()
-            
+
         # If we're moving from night to day, increment the round number
         if next_phase == GamePhase.DAY_DISCUSSION:
             self.game_state.current_round += 1
@@ -347,7 +351,8 @@ class GameController:
             )
             return True
         return False
-    
+
+
 class PhaseController:
     """Base class for phase controllers."""
 
@@ -363,7 +368,7 @@ class PhaseController:
     def run(self):
         """Run this phase."""
         raise NotImplementedError("Subclasses must implement run()")
-        
+
     def _update_agent_memories(self):
         """Update all agents' memories with the current game state."""
         for agent in self.agents.values():
@@ -447,7 +452,7 @@ class DayDiscussionController(PhaseController):
 
             # Emit message event
             self.emit_event("message", message)
-            
+
             # Log message
             logger.info(f"{player.name} says: {message_content}")
 
@@ -520,7 +525,7 @@ class DayVotingController(PhaseController):
 
             # Update agent memory with the current game state
             agent.update_memory(self.game_state)
-            
+
             # Generate vote
             target_id = agent.generate_day_vote(self.game_state)
 
@@ -530,7 +535,7 @@ class DayVotingController(PhaseController):
 
             # Validate vote
             if target_id not in self.game_state.alive_players or target_id == player.id:
-                # Invalid vote, 
+                # Invalid vote,
                 logger.warning(
                     f"{player.name} attempted to vote for an invalid target: {target_id}"
                 )
@@ -571,9 +576,7 @@ class DayVotingController(PhaseController):
         if votes:
             # check if there is a tie
             max_votes = max(votes.values())
-            tied_players = [
-                pid for pid, count in votes.items() if count == max_votes
-            ]
+            tied_players = [pid for pid, count in votes.items() if count == max_votes]
             if len(tied_players) > 1:
                 eliminated_players = [
                     self.game_state.players[pid].name for pid in tied_players
@@ -584,8 +587,8 @@ class DayVotingController(PhaseController):
                     description=f"{', '.join(eliminated_players)} are tied with {max_votes} votes each. No one is eliminated.",
                     public=True,
                 )
-                
-                logger.info("No one was eliminated due to a tie!")                
+
+                logger.info("No one was eliminated due to a tie!")
 
             else:
                 eliminated_id = max(votes.items(), key=lambda x: x[1])[0]
@@ -596,7 +599,7 @@ class DayVotingController(PhaseController):
 
                 # Log elimination
                 logger.info(f"{eliminated_player.name} has been eliminated!")
-                
+
                 self.game_controller._add_game_event(
                     event_type="vote_result",
                     description=f"{eliminated_player.name} has been eliminated with {max_votes} votes!",
@@ -810,7 +813,7 @@ class NightActionController(PhaseController):
         # Process detective action
         if investigate_action:
             self.emit_event("action", investigate_action)
-            
+
             detective = self.game_state.players[investigate_action.actor_id]
             target = self.game_state.players[investigate_action.target_id]
 
@@ -843,7 +846,7 @@ class NightActionController(PhaseController):
         protected_player_id = None
         if protect_action:
             self.emit_event("action", protect_action)
-            
+
             protected_player_id = protect_action.target_id
             protected_player = self.game_state.players[protected_player_id]
             protected_player.protected = True
@@ -859,7 +862,7 @@ class NightActionController(PhaseController):
         # Process kill action
         if kill_action:
             self.emit_event("action", kill_action)
-            
+
             target_id = kill_action.target_id
             target = self.game_state.players[target_id]
 
@@ -929,3 +932,262 @@ class NightActionController(PhaseController):
         # Reset protection status for all players
         for player in self.game_state.players.values():
             player.protected = False
+
+
+class RecordedGameController(GameController):
+    """Main controller for the Mafia game from a recorded game."""
+
+    def __init__(self, transcript: Dict[str, Any]):
+        """
+        Initialize the game controller.
+
+        Args:
+            transcript: Transcript of a recorded game
+        """
+        self.transcript = transcript
+        self.config = transcript["config"]
+        self.game_state = None
+        self.agents: Dict[str, BaseAgent] = {}
+        self.phase_controllers = {
+            GamePhase.DAY_DISCUSSION: DayDiscussionRecordController(self),
+            GamePhase.DAY_VOTING: DayVotingRecordController(self),
+            GamePhase.NIGHT_MAFIA_DISCUSSION: NightMafiaDiscussionRecordController(
+                self
+            ),
+            GamePhase.NIGHT_ACTION: NightActionRecordController(self),
+        }
+        self.event_callbacks = {
+            "message": [],
+            "game_event": [],
+            "action": [],
+            "vote": [],
+            # "elimination": [],
+            "vote_result": [],
+        }
+        self.game_id = transcript.get("game_id", str(uuid.uuid4()))
+        self.game_over = False
+
+        self.winning_team = None
+        self.stream_event_index = 0
+
+    def initialize_game(self, player_names: List[str]) -> GameState:
+        players = {
+            player_id: Player(
+                id=player_id,
+                name=player["name"],
+                role=PlayerRole[player["role"].upper()],
+            )
+            for player_id, player in self.transcript["players"].items()
+        }
+
+        self.game_state = GameState(
+            players=players,
+            current_round=1,
+            current_phase=GamePhase.DAY_DISCUSSION,
+            events=[],
+            votes=[],
+            actions=[],
+            messages=[],
+            game_over=False,
+            winning_team=None,
+        )
+
+        # Initialize agents
+        self._initialize_agents()
+
+        # Add initial game event
+        self._add_game_event()
+
+        self.phase_completed = False
+
+        return self.game_state
+
+    def _initialize_agents(self):
+        """Initialize agents for all players."""
+        # Get agent settings from config
+        agent_config = self.transcript["config"]["agent"]
+        game_config = {
+            "players": self.game_state.players,
+            "roles": self.transcript["config"]["roles"],
+            "game_id": self.game_id,
+        }
+        moitoring_config = {}  # No monitoring for recorded games
+
+        # Get LLM provider settings
+        llm_providers = self.transcript["config"]["llm_providers"]
+        # Assign providers to players (round-robin)
+        providers = list(llm_providers.keys())
+        for i, (player_id, player) in enumerate(self.game_state.players.items()):
+            provider = providers[i % len(providers)]
+            provider_config = llm_providers.get(provider, {})
+
+            # Merge provider config with agent config
+            combined_config = {
+                **agent_config,
+                **game_config,
+                **provider_config,
+                **moitoring_config,
+            }
+
+            # Create agent
+            self.agents[player_id] = create_agent(player, provider, combined_config)
+
+    def _add_game_event(self):
+        """Add a new event to the game state."""
+        # Get event data from transcript
+        event_data = self.transcript["events"][self.stream_event_index]
+        self.stream_event_index += 1
+
+        # Create event object
+        event = GameEvent(
+            event_type=event_data["type"],
+            round_num=event_data["round"],
+            phase=GamePhase.__members__[event_data["phase"]],
+            description=event_data["description"],
+            public=event_data["public"],
+            targets=event_data.get("targets", []),
+        )
+
+        # Emit event
+        self.emit_event("game_event", event)
+
+        # Add event to game state
+        self.game_state.events.append(event)
+        logger.info(f"Event ({event.event_type}): {event.description}")
+
+    def advance_phase(self):
+        """Advance to the next game phase."""
+        if self.transcript["events"][self.stream_event_index]["type"] == "game_over":
+            self.game_state.game_over = True
+            self.game_state.winning_team = TeamAlignment.__members__[
+                self.transcript["result"]["winning_team"]
+            ]
+
+            # Add game over event
+            self._add_game_event()
+
+            return
+
+        # run until the next phase 
+        while (
+            self.transcript["events"][self.stream_event_index]["type"] != "phase_change"
+        ):
+            self._add_game_event()
+
+        self.game_state.current_phase = GamePhase.__members__[
+                    self.transcript["events"][self.stream_event_index]["phase"]
+                ]  
+        self.game_state.current_round = self.transcript["events"][self.stream_event_index]["round"]
+
+        self._add_game_event()  # phase_change event
+
+
+class DayDiscussionRecordController(PhaseController):
+    """Controller for the day discussion phase."""
+
+    def run(self):
+        """Run the day discussion phase."""
+        # Update agent memories
+        self._update_agent_memories()
+
+        # Run discussion rounds
+        round_messages = filter(
+            lambda m: (m["phase"] == "DAY_DISCUSSION")
+            and (m["round"] == self.game_state.current_round),
+            self.game_controller.transcript["messages"],
+        )
+        for msg in round_messages:
+            message = Message(
+                sender_name=msg["sender"],
+                sender_id=msg["sender"],
+                content=msg["content"],
+                round_num=msg["round"],
+                phase=GamePhase.DAY_DISCUSSION,
+                public=True,
+            )
+            self.game_state.messages.append(message)
+            self.emit_event("message", message)
+            logger.info(f"{msg['sender']} says: {msg['content']}")
+
+            # TODO: reactions
+
+
+class DayVotingRecordController(PhaseController):
+    """Controller for the day voting phase."""
+
+    def run(self):
+        """Run the day voting phase."""
+        # Update agent memories
+        self._update_agent_memories()
+
+        # Run voting rounds
+        round_votes = filter(
+            lambda v: (v["phase"] == "DAY_VOTING")
+            and (v["round"] == self.game_state.current_round),
+            self.game_controller.transcript["votes"],
+        )
+        for vote in round_votes:
+            vote_obj = Vote(
+                voter_id=vote["voter"],
+                target_id=vote["target"],
+                round_num=vote["round"],
+                phase=GamePhase.DAY_VOTING,
+            )
+            self.game_state.votes.append(vote_obj)
+            self.emit_event("vote", vote_obj)
+            logger.info(f"{vote['voter']} votes for {vote['target']}")
+
+
+class NightMafiaDiscussionRecordController(PhaseController):
+    """Controller for the night mafia discussion phase."""
+
+    def run(self):
+        """Run the night mafia discussion phase."""
+        # Update agent memories
+        self._update_agent_memories()
+
+        # Run discussion rounds
+        round_messages = filter(
+            lambda m: (m["phase"] == "NIGHT_MAFIA_DISCUSSION")
+            and (m["round"] == self.game_state.current_round),
+            self.game_controller.transcript["messages"],
+        )
+        for msg in round_messages:
+            message = Message(
+                sender_name=msg["sender"],
+                sender_id=msg["sender"],
+                content=msg["content"],
+                round_num=msg["round"],
+                phase=GamePhase.NIGHT_MAFIA_DISCUSSION,
+                public=False,
+            )
+            self.game_state.messages.append(message)
+            self.emit_event("message", message)
+            logger.info(f"[MAFIA] {msg['sender']} says: {msg['content']}")
+
+
+class NightActionRecordController(PhaseController):
+    """Controller for the night action phase."""
+
+    def run(self):
+        """Run the night action phase."""
+        # Update agent memories
+        self._update_agent_memories()
+
+        # Run action rounds
+        round_actions = filter(
+            lambda a: (a["phase"] == "NIGHT_ACTION")
+            and (a["round"] == self.game_state.current_round),
+            self.game_controller.transcript["actions"],
+        )
+        for action in round_actions:
+            action_obj = Action(
+                actor_id=action["actor"],
+                action_type=action["action"],
+                target_id=action["target"],
+                round_num=action["round"],
+                phase=GamePhase.NIGHT_ACTION,
+            )
+            self.game_state.actions.append(action_obj)
+            self.emit_event("action", action_obj)
+            logger.info(f"{action['actor']} performs {action['action']} on {action['target']}")

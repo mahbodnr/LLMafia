@@ -9,7 +9,7 @@ from typing import List, Dict, Any
 
 from src.models import Player, GameState, PlayerRole
 from src.agents import BaseAgent, create_agent
-from src.controllers import GameController
+from src.controllers import GameController, RecordedGameController
 from src.config import DEFAULT_GAME_SETTINGS, LLM_PROVIDERS, UI_SETTINGS, LOGGING
 
 # Set up logging
@@ -25,17 +25,22 @@ logger = logging.getLogger(__name__)
 class MafiaGame:
     """Main class for the Mafia game."""
     
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: Dict[str, Any] = None, transcript: List[str] = None):
         """
         Initialize the Mafia game.
         
         Args:
             config: Configuration settings for the game (optional)
         """
-        self.config = config or DEFAULT_GAME_SETTINGS
-        self.game_controller = GameController(self.config)
+        if transcript is not None:
+            self.config = transcript.get("config", DEFAULT_GAME_SETTINGS)
+            self.game_controller = RecordedGameController(transcript)
+            self.transcript = transcript
+        else:
+            self.config = config or DEFAULT_GAME_SETTINGS
+            self.game_controller = GameController(self.config)
+            self.transcript = []
         self.game_state = None
-        self.transcript = []
     
     def initialize_game(self, player_names: List[str] = None):
         """
@@ -46,8 +51,11 @@ class MafiaGame:
         """
         # If no player names provided, generate random names
         if not player_names:
-            num_players = self.config.get("num_players", 7)
-            player_names = [f"Player_{i+1}" for i in range(num_players)]
+            if self.transcript:
+                player_names = [p.name for p in self.transcript["players"].values()]
+            else:
+                num_players = self.config.get("num_players", 7)
+                player_names = [f"Player_{i+1}" for i in range(num_players)]
         
         # Initialize game
         self.game_state = self.game_controller.initialize_game(player_names)

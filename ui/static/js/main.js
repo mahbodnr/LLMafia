@@ -15,7 +15,8 @@ let gameState = {
     currentSpeaker: null,
     waitingForContinue: false,
     waitingForMessages: false,
-    voteResult: null
+    voteResult: null,
+    transcriptFile: null
 };
 
 // DOM Elements
@@ -32,6 +33,12 @@ const currentSpeakerName = document.getElementById('current-speaker-name');
 const currentSpeakerMessage = document.getElementById('current-speaker-message');
 const continueButton = document.getElementById('continue-button');
 const centerDisplay = document.getElementById('center-display');
+
+// New DOM Elements for transcript upload
+const transcriptFileInput = document.getElementById('transcript-file');
+const uploadTranscriptButton = document.getElementById('upload-transcript');
+const clearTranscriptButton = document.getElementById('clear-transcript');
+const uploadStatusElement = document.getElementById('upload-status');
 
 // Game settings elements
 const playerCountSelect = document.getElementById('player-count');
@@ -312,14 +319,27 @@ function initializeSocket() {
         }
     });
 
-    // REMOVE the old vote_result handler
-    /*
-    socket.on('vote_result', (result) => {
-        console.log("Received vote result:", result);
-        gameState.voteResult = result;
-        showVoteResult(result);
+    // Add handler for transcript upload response
+    socket.on('transcript_upload_response', (data) => {
+        console.log("Received transcript upload response:", data);
+        if (data.success) {
+            uploadStatusElement.textContent = "Transcript uploaded successfully!";
+            uploadStatusElement.className = "small text-success mb-2";
+            clearTranscriptButton.disabled = false;
+            
+            // Disable regular game settings when transcript is loaded
+            toggleGameSettingsInputs(true);
+            
+            // Update start game button to indicate replay mode
+            startGameButton.textContent = "Start Replay";
+            startGameButton.classList.remove('btn-primary');
+            startGameButton.classList.add('btn-info');
+        } else {
+            uploadStatusElement.textContent = `Upload failed: ${data.error}`;
+            uploadStatusElement.className = "small text-danger mb-2";
+            gameState.transcriptFile = null;
+        }
     });
-    */
 }
 
 // Set up event listeners for UI elements
@@ -327,8 +347,6 @@ function setupEventListeners() {
     startGameButton.addEventListener('click', startGame);
     nextPhaseButton.addEventListener('click', () => {
         nextPhase();
-        // REMOVE hideVoteResult call
-        // hideVoteResult();
     });
     resetGameButton.addEventListener('click', resetGame);
     downloadTranscriptButton.addEventListener('click', downloadTranscript);
@@ -337,13 +355,113 @@ function setupEventListeners() {
         resetGame();
     });
 
-    // REMOVE the specific continueButton listener here if it's only for speakers
-    // continueButton.addEventListener('click', continueAfterSpeaker);
-    // Event listeners for continue buttons are now added dynamically within the center_display handler
+    // Set up transcript upload listeners
+    uploadTranscriptButton.addEventListener('click', uploadTranscript);
+    clearTranscriptButton.addEventListener('click', clearTranscriptUpload);
+    transcriptFileInput.addEventListener('change', handleFileInputChange);
 
     // Update mafia count options when player count changes
     playerCountSelect.addEventListener('change', updateMafiaCountOptions);
     updateMafiaCountOptions();
+}
+
+// Handle transcript file selection
+function handleFileInputChange(event) {
+    if (event.target.files && event.target.files.length > 0) {
+        uploadStatusElement.textContent = `File selected: ${event.target.files[0].name}`;
+        uploadStatusElement.className = "small text-primary mb-2";
+        uploadTranscriptButton.disabled = false;
+    } else {
+        uploadStatusElement.textContent = "No file selected";
+        uploadStatusElement.className = "small text-muted mb-2";
+        uploadTranscriptButton.disabled = true;
+    }
+}
+
+// Upload transcript file to server
+function uploadTranscript() {
+    const fileInput = document.getElementById('transcript-file');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        uploadStatusElement.textContent = "No file selected";
+        uploadStatusElement.className = "small text-danger mb-2";
+        return;
+    }
+    
+    // Show loading state
+    uploadStatusElement.textContent = "Uploading...";
+    uploadStatusElement.className = "small text-primary mb-2";
+    uploadTranscriptButton.disabled = true;
+    
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+        try {
+            // Parse JSON to validate format
+            const content = JSON.parse(e.target.result);
+            
+            // Send to server
+            socket.emit('upload_transcript', {
+                filename: file.name,
+                content: content
+            });
+            
+            // Save reference to file
+            gameState.transcriptFile = file.name;
+            
+        } catch (error) {
+            console.error("Error parsing transcript file:", error);
+            uploadStatusElement.textContent = "Invalid JSON file";
+            uploadStatusElement.className = "small text-danger mb-2";
+            uploadTranscriptButton.disabled = false;
+        }
+    };
+    
+    reader.onerror = function() {
+        uploadStatusElement.textContent = "Error reading file";
+        uploadStatusElement.className = "small text-danger mb-2";
+        uploadTranscriptButton.disabled = false;
+    };
+    
+    reader.readAsText(file);
+}
+
+// Clear transcript upload
+function clearTranscriptUpload() {
+    // Reset file input
+    document.getElementById('transcript-file').value = '';
+    
+    // Update UI
+    uploadStatusElement.textContent = "Upload cleared";
+    uploadStatusElement.className = "small text-muted mb-2";
+    uploadTranscriptButton.disabled = true;
+    clearTranscriptButton.disabled = true;
+    
+    // Reset game state
+    gameState.transcriptFile = null;
+    
+    // Re-enable regular game settings
+    toggleGameSettingsInputs(false);
+    
+    // Restore start game button
+    startGameButton.textContent = "Start New Game";
+    startGameButton.classList.remove('btn-info');
+    startGameButton.classList.add('btn-primary');
+    
+    // Tell server to clear any uploaded transcript
+    socket.emit('clear_transcript');
+}
+
+// Helper function to enable/disable game settings inputs
+function toggleGameSettingsInputs(disabled) {
+    playerCountSelect.disabled = disabled;
+    mafiaCountSelect.disabled = disabled;
+    includeDoctorCheckbox.disabled = disabled;
+    includeDetectiveCheckbox.disabled = disabled;
+    includeGodfatherCheckbox.disabled = disabled;
+    discussionRoundsSelect.disabled = disabled;
+    verboseModeCheckbox.disabled = disabled;
 }
 
 // Update mafia count options based on player count
@@ -379,7 +497,8 @@ function startGame() {
         includeDetective: includeDetectiveCheckbox.checked,
         includeGodfather: includeGodfatherCheckbox.checked,
         discussionRounds: parseInt(discussionRoundsSelect.value),
-        verboseMode: verboseModeCheckbox.checked
+        verboseMode: verboseModeCheckbox.checked,
+        useTranscript: gameState.transcriptFile !== null
     };
     
     console.log("Starting game with settings:", settings);
@@ -392,14 +511,11 @@ function startGame() {
     nextPhaseButton.disabled = false;
     resetGameButton.disabled = false;
     
-    // Disable settings
-    playerCountSelect.disabled = true;
-    mafiaCountSelect.disabled = true;
-    includeDoctorCheckbox.disabled = true;
-    includeDetectiveCheckbox.disabled = true;
-    includeGodfatherCheckbox.disabled = true;
-    discussionRoundsSelect.disabled = true;
-    verboseModeCheckbox.disabled = true;
+    // Disable settings and upload
+    toggleGameSettingsInputs(true);
+    transcriptFileInput.disabled = true;
+    uploadTranscriptButton.disabled = true;
+    clearTranscriptButton.disabled = true;
     
     addLogEntry('Starting new game...', 'info');
 }
@@ -421,14 +537,17 @@ function resetGame() {
     nextPhaseButton.disabled = true;
     resetGameButton.disabled = true;
     
-    // Enable settings
-    playerCountSelect.disabled = false;
-    mafiaCountSelect.disabled = false;
-    includeDoctorCheckbox.disabled = false;
-    includeDetectiveCheckbox.disabled = false;
-    includeGodfatherCheckbox.disabled = false;
-    discussionRoundsSelect.disabled = false;
-    verboseModeCheckbox.disabled = false;
+    // Re-enable settings based on whether we have a transcript
+    if (gameState.transcriptFile) {
+        toggleGameSettingsInputs(true);
+        clearTranscriptButton.disabled = false;
+    } else {
+        toggleGameSettingsInputs(false);
+    }
+    
+    // Re-enable file upload
+    transcriptFileInput.disabled = false;
+    uploadTranscriptButton.disabled = !transcriptFileInput.files.length;
     
     // Reset game state
     gameState = {
@@ -442,7 +561,8 @@ function resetGame() {
         currentSpeaker: null,
         waitingForContinue: false,
         waitingForMessages: false,
-        voteResult: null
+        voteResult: null,
+        transcriptFile: null
     };
     
     // Reset UI elements
@@ -455,9 +575,6 @@ function resetGame() {
     currentSpeakerName.textContent = 'None';
     currentSpeakerMessage.textContent = 'Waiting for the game to start...';
     continueButton.disabled = true;
-    
-    // Hide vote result if visible
-    // REMOVE hideVoteResult();
     
     // Reset to day mode styling
     const body = document.body;

@@ -35,6 +35,26 @@
                         </div>
                         <div class="game-settings mt-4">
                             <h4>Game Settings</h4>
+                            
+                            <!-- Add transcript upload section -->
+                            <div class="transcript-upload mb-3 border-bottom pb-3">
+                                <h5>Replay from Transcript</h5>
+                                <div class="form-group mb-2">
+                                    <label for="transcript-file" class="form-label">Upload game transcript:</label>
+                                    <input class="form-control form-control-sm" id="transcript-file" type="file" accept=".json">
+                                </div>
+                                <div id="upload-status" class="small text-muted mb-2"></div>
+                                <div class="d-grid gap-2">
+                                    <button id="upload-transcript" class="btn btn-outline-primary btn-sm mb-2">Upload Transcript</button>
+                                    <button id="clear-transcript" class="btn btn-outline-secondary btn-sm mb-2" disabled>Clear Upload</button>
+                                </div>
+                                <div class="form-text text-muted small mb-3">
+                                    Upload a JSON transcript file to replay a previous game.
+                                </div>
+                                <hr>
+                                <h5>New Game Settings</h5>
+                            </div>
+                            
                             <div class="form-group mb-2">
                                 <label for="player-count">Number of Players:</label>
                                 <select id="player-count" class="form-control">

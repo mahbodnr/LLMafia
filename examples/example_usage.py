@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.game import MafiaGame
+from src.controllers import RecordedGameController
 from src.models import TeamAlignment
 
 # Load environment variables from .env file if it exists
@@ -77,7 +78,11 @@ def run_custom_game():
         "mechanics": {
             "godfather_appears_innocent": True,
             "reveal_role_on_death": True,
-        }
+        },
+        "llm_providers": {
+                # Configure your LLM providers here
+                "debug": {"model": "debug"},
+            },
     }
     
     # Create game instance with custom config
@@ -175,6 +180,29 @@ def analyze_game_transcript(transcript_file):
     for e in eliminations:
         print(f"Round {e['round']}, {e['phase']}: {e['description']}")
 
+def run_from_transcript(transcript_file):
+    """Run a game from a transcript."""
+    import json
+    print(f"Running game from transcript: {transcript_file}")
+    
+    # Load transcript
+    with open(transcript_file, 'r') as f:
+        transcript = json.load(f)
+    
+    # Create game instance
+    game = MafiaGame(transcript= transcript)
+    
+    # Initialize game with players from transcript
+    player_names = [p['name'] for p in transcript['players'].values()]
+    game.initialize_game(player_names)
+    
+    # Run game
+    game_over, winning_team = game.game_controller.run_game()
+    
+    # Print result
+    team_name = "Village" if winning_team == TeamAlignment.VILLAGE else "Mafia"
+    print(f"Game over! The {team_name} team has won!")
+
 
 if __name__ == "__main__":
     print("Mafia Game with LLM Agents - Example Usage\n")
@@ -204,9 +232,10 @@ if __name__ == "__main__":
         print("2. Run a custom game with specific settings")
         print("3. Run a game step by step")
         print("4. Analyze a game transcript")
+        print("5. Run a game from a transcript")
         print("0. Exit")
         
-        choice = input("\nEnter your choice (0-4): ")
+        choice = input("\nEnter your choice (0-5): ")
         
         if choice == '0':
             print("Exiting...")
@@ -217,10 +246,13 @@ if __name__ == "__main__":
             run_custom_game()
         elif choice == '3':
             run_step_by_step_game()
-        elif choice == '4':
+        elif choice in ['4', '5']:
             transcript_file = input("Enter the path to the transcript file: ")
             if os.path.exists(transcript_file):
-                analyze_game_transcript(transcript_file)
+                if choice == '4':
+                    analyze_game_transcript(transcript_file)
+                elif choice == '5':
+                    run_from_transcript(transcript_file)
             else:
                 print(f"File not found: {transcript_file}")
         else:
