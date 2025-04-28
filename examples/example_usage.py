@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.game import MafiaGame
-from src.controllers import RecordedGameController
 from src.models import TeamAlignment
 
 # Load environment variables from .env file if it exists
@@ -79,7 +78,7 @@ def run_custom_game():
             "godfather_appears_innocent": True,
             "reveal_role_on_death": True,
         },
-        "llm_providers": {
+        "ai_models": {
                 # Configure your LLM providers here
                 "debug": {"model": "debug"},
             },

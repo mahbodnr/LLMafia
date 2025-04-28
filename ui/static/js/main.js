@@ -498,7 +498,7 @@ function startGame() {
         includeGodfather: includeGodfatherCheckbox.checked,
         discussionRounds: parseInt(discussionRoundsSelect.value),
         verboseMode: verboseModeCheckbox.checked,
-        useTranscript: gameState.transcriptFile !== null
+        useTranscript: gameState.transcriptFile !== null // Add this flag
     };
     
     console.log("Starting game with settings:", settings);
@@ -539,17 +539,26 @@ function resetGame() {
     
     // Re-enable settings based on whether we have a transcript
     if (gameState.transcriptFile) {
-        toggleGameSettingsInputs(true);
-        clearTranscriptButton.disabled = false;
+        toggleGameSettingsInputs(true); // Keep settings disabled if transcript is still loaded
+        clearTranscriptButton.disabled = false; // Allow clearing
+        startGameButton.textContent = "Start Replay"; // Keep button text
+        startGameButton.classList.remove('btn-primary');
+        startGameButton.classList.add('btn-info');
     } else {
-        toggleGameSettingsInputs(false);
+        toggleGameSettingsInputs(false); // Enable settings if no transcript
+        clearTranscriptButton.disabled = true;
+        startGameButton.textContent = "Start New Game"; // Reset button text
+        startGameButton.classList.remove('btn-info');
+        startGameButton.classList.add('btn-primary');
     }
     
-    // Re-enable file upload
+    // Re-enable file upload input
     transcriptFileInput.disabled = false;
-    uploadTranscriptButton.disabled = !transcriptFileInput.files.length;
+    // Enable upload button only if a file is selected (handleFileInputChange will manage this)
+    uploadTranscriptButton.disabled = !transcriptFileInput.files.length; 
     
-    // Reset game state
+    // Reset game state (keep transcriptFile if it exists)
+    const currentTranscriptFile = gameState.transcriptFile; // Preserve transcript file name
     gameState = {
         started: false,
         phase: 'not_started',
@@ -562,7 +571,7 @@ function resetGame() {
         waitingForContinue: false,
         waitingForMessages: false,
         voteResult: null,
-        transcriptFile: null
+        transcriptFile: currentTranscriptFile // Restore transcript file name
     };
     
     // Reset UI elements

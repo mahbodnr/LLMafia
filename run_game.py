@@ -94,7 +94,7 @@ def main():
     config["phases"]["day"]["discussion_rounds"] = args.rounds
     config["agent"]["verbosity"] = "elaborate" if args.verbose else "brief"
 
-    config["llm_providers"] = {
+    config["ai"] = {
         "debug": {"model": "debug"},
     }
 

@@ -162,33 +162,51 @@ class GameController:
         moitoring_config = self.config.get("monitoring", {})
 
         # Get LLM provider settings
-        llm_providers = self.config.get(
-            "llm_providers",
-            {
-                "openai": {"model": "gpt-4o-mini"},
+        ai_models = self.config.get(
+            "ai_models",
+            [
+                {"provider": "openai", "model": "gpt-4o-mini"},
                 # "debug": {"model": "debug"},
-                "anthropic": {"model": "claude-3-5-sonnet-latest"},
-                "google": {"model": "gemini-2.0-flash"},
-            },
+                {"provider":"anthropic", "model": "claude-3-5-sonnet-latest"},
+                {"provider":"google", "model": "gemini-2.0-flash"},
+            ],
         )
 
         # Assign providers to players (round-robin)
-        providers = list(llm_providers.keys())
-
         for i, (player_id, player) in enumerate(self.game_state.players.items()):
-            provider = providers[i % len(providers)]
-            provider_config = llm_providers.get(provider, {})
+            agent = None
+            for j in range(len(ai_models)):
+                model_config = ai_models[(i+j) % len(ai_models)]
 
-            # Merge provider config with agent config
-            combined_config = {
-                **agent_config,
-                **game_config,
-                **provider_config,
-                **moitoring_config,
-            }
+                if "team" in model_config:
+                    # Check if the model is for a specific team
+                    if player.team.name.lower() != model_config["team"].lower():
+                        continue
+                
+                if "role" in model_config:
+                    # Check if the model is for a specific role
+                    if player.role.name.lower() != model_config["role"].lower():
+                        continue
 
-            # Create agent
-            self.agents[player_id] = create_agent(player, provider, combined_config)
+                # Merge provider config with agent config
+                combined_config = {
+                    **agent_config,
+                    **game_config,
+                    **model_config,
+                    **moitoring_config,
+                }
+
+                # Create agent
+                agent = create_agent(player, model_config["provider"], combined_config)
+                break
+                
+            
+            if agent is None:
+                raise ValueError(
+                    f"No valid LLM provider found for player {player.name} with role {player.role.name}."+
+                    f"\nAI models config: {ai_models}"
+                )
+            self.agents[player_id] = agent
 
     def register_callback(self, event_type: str, callback):
         """
@@ -313,7 +331,7 @@ class GameController:
                 next_phase = GamePhase.DAY_DISCUSSION
 
         # reverse the order of the alive players for the next phase
-        if self.game_state.current_round > 1 and next_phase == GamePhase.DAY_DISCUSSION:
+        if next_phase == GamePhase.DAY_DISCUSSION:
             self.game_state.reverse_players_order()
 
         # If we're moving from night to day, increment the round number
@@ -1005,32 +1023,64 @@ class RecordedGameController(GameController):
     def _initialize_agents(self):
         """Initialize agents for all players."""
         # Get agent settings from config
-        agent_config = self.transcript["config"]["agent"]
+        agent_config = self.transcript["config"].get(
+            "agent",
+            {
+                "verbosity": "elaborate",
+                "max_message_length": 200,
+                "memory_limit": None,
+            },
+        )
         game_config = {
             "players": self.game_state.players,
             "roles": self.transcript["config"]["roles"],
             "game_id": self.game_id,
         }
-        moitoring_config = {}  # No monitoring for recorded games
+        # No monitoring for recorded games
+        moitoring_config = {}
+        
 
         # Get LLM provider settings
-        llm_providers = self.transcript["config"]["llm_providers"]
+        ai_models = self.transcript["config"]["ai_models"]
+
         # Assign providers to players (round-robin)
-        providers = list(llm_providers.keys())
         for i, (player_id, player) in enumerate(self.game_state.players.items()):
-            provider = providers[i % len(providers)]
-            provider_config = llm_providers.get(provider, {})
+            agent = None
+            for j in range(len(ai_models)):
+                model_config = ai_models[(i+j) % len(ai_models)]
 
-            # Merge provider config with agent config
-            combined_config = {
-                **agent_config,
-                **game_config,
-                **provider_config,
-                **moitoring_config,
-            }
+                if "team" in model_config:
+                    # Check if the model is for a specific team
+                    if player.team.name.lower() != model_config["team"].lower():
+                        continue
+                
+                if "role" in model_config:
+                    # Check if the model is for a specific role
+                    if player.role.name.lower() != model_config["role"].lower():
+                        continue
 
-            # Create agent
-            self.agents[player_id] = create_agent(player, provider, combined_config)
+                # Merge provider config with agent config
+                combined_config = {
+                    **agent_config,
+                    **game_config,
+                    **model_config,
+                    **moitoring_config,
+                }
+
+                # Create agent
+                agent = create_agent(player, model_config["provider"], combined_config)
+                break
+                
+            
+            if agent is None:
+                raise ValueError(
+                    f"No valid LLM provider found for player {player.name} with role {player.role.name}."+
+                    f"\nAI models config: {ai_models}"
+                )
+            self.agents[player_id] = agent
+
+
+        moitoring_config = {}  # No monitoring for recorded games
 
     def _add_game_event(self):
         """Add a new event to the game state."""
@@ -1057,27 +1107,41 @@ class RecordedGameController(GameController):
 
     def advance_phase(self):
         """Advance to the next game phase."""
-        if self.transcript["events"][self.stream_event_index]["type"] == "game_over":
+        if (
+            self.stream_event_index >= len(self.transcript["events"]) - 1 
+            or self.transcript["events"][self.stream_event_index]["type"] == "game_over"
+        ):
             self.game_state.game_over = True
             self.game_state.winning_team = TeamAlignment.__members__[
                 self.transcript["result"]["winning_team"]
             ]
 
-            # Add game over event
-            self._add_game_event()
+            # emit game over event
+            event = GameEvent(
+                event_type="game_over",
+                round_num=self.game_state.current_round,
+                phase=self.game_state.current_phase,
+                description="Game over! The game has ended.",
+                public=True,
+            )
+            self.emit_event("game_event", event)
+            self.game_state.events.append(event)
+            logger.info("Game over! The game has ended.")
 
             return
 
-        # run until the next phase 
+        # run until the next phase
         while (
             self.transcript["events"][self.stream_event_index]["type"] != "phase_change"
         ):
             self._add_game_event()
 
         self.game_state.current_phase = GamePhase.__members__[
-                    self.transcript["events"][self.stream_event_index]["phase"]
-                ]  
-        self.game_state.current_round = self.transcript["events"][self.stream_event_index]["round"]
+            self.transcript["events"][self.stream_event_index]["phase"]
+        ]
+        self.game_state.current_round = self.transcript["events"][
+            self.stream_event_index
+        ]["round"]
 
         self._add_game_event()  # phase_change event
 
@@ -1190,4 +1254,6 @@ class NightActionRecordController(PhaseController):
             )
             self.game_state.actions.append(action_obj)
             self.emit_event("action", action_obj)
-            logger.info(f"{action['actor']} performs {action['action']} on {action['target']}")
+            logger.info(
+                f"{action['actor']} performs {action['action']} on {action['target']}"
+            )

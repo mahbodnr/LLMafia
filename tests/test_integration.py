@@ -138,7 +138,7 @@ class TestGameSimulation(unittest.TestCase):
         self.assertGreater(len(game.game_state.votes), 0)
         
         # Test transcript saving
-        transcript_file = game._save_transcript()
+        transcript_file = game.save_transcript()
         self.assertTrue(os.path.exists(transcript_file))
         
         # Check transcript content

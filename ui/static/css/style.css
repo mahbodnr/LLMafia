@@ -619,14 +619,37 @@ body.night-mode {
 
 /* Transcript upload styling */
 .transcript-upload {
-    background-color: rgba(0, 123, 255, 0.05);
+    background-color: rgba(0, 123, 255, 0.05); /* Light blue background */
     border-radius: 6px;
-    padding: 10px;
+    padding: 15px; /* Increased padding */
     margin-bottom: 15px;
+    border: 1px solid rgba(0, 123, 255, 0.2); /* Subtle border */
+}
+
+.transcript-upload h5 {
+    margin-bottom: 10px;
+    color: #0056b3; /* Darker blue for heading */
+}
+
+.transcript-upload .form-label {
+    font-weight: 500;
+}
+
+.transcript-upload .form-control-sm {
+    font-size: 0.875rem;
+}
+
+.transcript-upload #upload-status {
+    font-style: italic;
 }
 
 .night-mode .transcript-upload {
     background-color: rgba(13, 110, 253, 0.15);
+    border-color: rgba(13, 110, 253, 0.3);
+}
+
+.night-mode .transcript-upload h5 {
+    color: #66b0ff; /* Lighter blue for night mode heading */
 }
 
 /* Responsive Adjustments */
