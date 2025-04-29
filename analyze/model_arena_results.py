@@ -39,7 +39,7 @@ plt.ylabel("Mafia Model")
 plt.xticks(ticks=[0.5, 1.5], labels=[model_1, model_2], rotation=0)
 plt.yticks(ticks=[0.5, 1.5], labels=[model_1, model_2], rotation=0)
 plt.tight_layout()
-plt.show()
+# plt.show()
 
 # Save the figure
 plt.savefig(
