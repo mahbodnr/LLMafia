@@ -40,7 +40,7 @@ Mafia is a social deduction party game (similar to Werewolf) where multiple play
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/mafia-game.git
+git clone https://github.com/mahbodnr/LLMafia.git
 cd mafia-game
 ```
 
