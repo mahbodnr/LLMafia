@@ -1,10 +1,12 @@
 # Mafia Game with LLM Agents
 
-A social deduction party game (similar to Werewolf) where multiple language model agents play different roles and interact through structured prompts. The game is fully automated with LLM agents participating by chatting, reasoning, and voting.
+![Mafia Game](media/LLMafia_day_discussion.png)
+
+ This project implements a version of the Mafia party game where language model agents (LLMs) play the roles of players, using their natural language processing capabilities to interact, discuss, and deduce the identities of other players.
 
 ## Overview
 
-This project implements a Mafia/Werewolf game where language model agents (LLMs) play different roles and interact with each other. The game alternates between Day and Night phases, with players working to identify the Mafia members or eliminate the Villagers, depending on their role.
+Mafia is a social deduction party game (similar to Werewolf) where multiple players take on different roles and try to identify the Mafia members among them. This project implements a Mafia game where language model agents (LLMs) play different roles and interact with each other. The game alternates between Day and Night phases, with players working to identify the Mafia members or eliminate the Villagers, depending on their role.
 
 ### Game Roles
 
@@ -26,36 +28,13 @@ This project implements a Mafia/Werewolf game where language model agents (LLMs)
 
 ## Features
 
-- Multiple LLM agents playing different roles (OpenAI, Anthropic, Google)
+- Multiple LLM agents playing different roles (OpenAI, Anthropic, Google, Llama, etc.)
+- Support both online models (through API) and local models (using OLlama)
 - Agent memory system to track game events and discussions
 - Role-specific behaviors and actions
 - Day/Night phase transitions
 - Voting and elimination mechanics
 - Web UI for visualizing the game
-- Comprehensive testing framework
-- Game transcripts for analysis
-
-## Project Structure
-
-```
-mafia_game/
-├── src/                  # Source code
-│   ├── models.py         # Core data models
-│   ├── agents.py         # Agent implementations
-│   ├── controllers.py    # Game controllers
-│   ├── game.py           # Main game logic
-│   └── config.py         # Configuration settings
-├── tests/                # Test suite
-│   ├── test_game.py      # Unit tests
-│   └── test_integration.py # Integration tests
-├── ui/                   # Web interface
-│   ├── app.py            # Flask server
-│   ├── templates/        # HTML templates
-│   └── static/           # CSS, JS, and assets
-├── venv/                 # Python virtual environment
-├── requirements.txt      # Project dependencies
-└── README.md             # Project documentation
-```
 
 ## Installation
 
@@ -96,7 +75,7 @@ python -m src.game
 With custom settings:
 
 ```bash
-python -m src.game --players 7 --mafia 2 --godfather True --doctor True --detective True --rounds 3 --verbose True
+python -m src.game --players 10 --mafia 2 --godfather True --doctor True --detective True --rounds 2
 ```
 
 ### Running the Web UI
@@ -124,7 +103,6 @@ The game can be configured through the `config.py` file or by passing command-li
 - Number of players
 - Role distribution
 - Discussion rounds per day
-- Agent verbosity
 - Game mechanics (e.g., whether the Godfather appears innocent)
 
 ## Extending the Game
@@ -150,8 +128,19 @@ The game supports multiple LLM providers through the agent factory pattern. To a
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Acknowledgments
+## Contributing
+Contributions are very welcome! Please open an issue or submit a pull request, or just reach out to me directly. If you want to contribute but don't know where to start, you can take a look at the To-Do list below.
 
-- Inspired by the classic Mafia/Werewolf party game
-- Built with LangChain for LLM integration
-- Uses Flask and Socket.IO for the web interface
+## To-Do
+- [ ] Add User Agent (for human players)
+- [ ] Debug and improve the replay system
+- [ ] Add parallelization for LLM calls (Batch input?)
+- [ ] Fix the bugs with the web UI:
+  - [ ] Votes and Actions do not appear at the correct round in the agent's history
+- [ ] Extend the memory of the agents to several games
+- [ ] Train LLM models with Unsupervised Reinforcement Learning based on the game outcomes
+## Gallery
+![Agent History](media/LLMafia_agent_history.png)
+![Night Descussion](media/LLMafia_night_discussion.png)
+![Night Voting](media/LLMafia_voting.png)
+![llama3.2:1b vs llama3.3:70b](media/llama3.2:1b_vs_llama3.3:70b_village_win_rate.png)

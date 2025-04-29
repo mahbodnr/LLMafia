@@ -78,6 +78,7 @@ class GameController:
                 "Godfather": 1,
             },
         )
+        self.config["roles"] = role_distribution
 
         # Validate that we have the right number of players
         total_roles = sum(role_distribution.values())
@@ -152,6 +153,7 @@ class GameController:
                 "memory_limit": None,
             },
         )
+        self.config["agent"] = agent_config
 
         game_config = {
             "players": self.game_state.players,
@@ -165,12 +167,13 @@ class GameController:
         ai_models = self.config.get(
             "ai_models",
             [
-                {"provider": "openai", "model": "gpt-4o-mini"},
-                # "debug": {"model": "debug"},
-                {"provider":"anthropic", "model": "claude-3-5-sonnet-latest"},
-                {"provider":"google", "model": "gemini-2.0-flash"},
+                {"provider": "debug", "model": "debug"},
+                # {"provider": "openai", "model": "gpt-4o-mini"},
+                # {"provider":"anthropic", "model": "claude-3-5-sonnet-latest"},
+                # {"provider":"google", "model": "gemini-2.0-flash"},
             ],
         )
+        self.config["ai_models"] = ai_models
 
         # Assign providers to players (round-robin)
         for i, (player_id, player) in enumerate(self.game_state.players.items()):
@@ -1101,6 +1104,12 @@ class RecordedGameController(GameController):
         # Emit event
         self.emit_event("game_event", event)
 
+        if event.event_type == "elimination":
+            if event.targets:
+                # Update player status
+                eliminated_player = self.game_state.players[event.targets[0]]
+                eliminated_player.status = PlayerStatus.DEAD
+
         # Add event to game state
         self.game_state.events.append(event)
         logger.info(f"Event ({event.event_type}): {event.description}")
@@ -1111,6 +1120,7 @@ class RecordedGameController(GameController):
             self.stream_event_index >= len(self.transcript["events"]) - 1 
             or self.transcript["events"][self.stream_event_index]["type"] == "game_over"
         ):
+            logger.info(f"Game over! The game has ended. stream_event_index: {self.stream_event_index} treanscript_events: {len(self.transcript['events'])}")
             self.game_state.game_over = True
             self.game_state.winning_team = TeamAlignment.__members__[
                 self.transcript["result"]["winning_team"]

@@ -55,6 +55,7 @@ class MafiaGame:
                 player_names = [p["name"] for p in self.transcript["players"].values()]
             else:
                 num_players = self.config.get("num_players", 7)
+                self.config["num_players"] = num_players
                 player_names = generate_player_names(num_players)
 
         # Initialize game
@@ -126,6 +127,7 @@ class MafiaGame:
                     "type": e.event_type,
                     "description": e.description,
                     "public": e.public,
+                    "targets": e.targets,
                 }
                 for e in self.game_state.events
             ],
